@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- Nur eigene Dateien erlaubt: keine fremden Server, keine fremden Skripte -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161615" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Vinted-Helfer">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<title>Vinted-Helfer</title>
+<style>
+:root{--onacc:#fff;--bg:#f6f6f4;--card:#fff;--tx:#1d1d1b;--mut:#6b6b66;--line:#e1e1dc;--acc:#0a7a6b;--gr:#1e8e4e;--ye:#c98a00;--re:#c0392b}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--card:#212120;--tx:#ececE8;--mut:#9a9a94;--line:#35352f;--acc:#2bbfa8;--gr:#4cc77d;--ye:#e5ad2e;--re:#ef6b5c;--onacc:#0b1f1c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 -apple-system,system-ui,sans-serif;padding:calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 16px calc(16px + env(safe-area-inset-left));max-width:980px;margin-inline:auto}
+h1{font-size:22px;margin:0 0 4px} h2{font-size:16px;margin:0 0 10px} h3{font-size:14px;margin:18px 0 8px}
+.sub{color:var(--mut);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.tabs,.chips{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tabs button,.chips button{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--tx);cursor:pointer;font:inherit}
+.chips button{padding:4px 11px;font-size:13px}
+.tabs button.on,.chips button.on{background:var(--acc);color:var(--onacc);border-color:var(--acc)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
+/* 16 px, sonst zoomt das iPhone beim Tippen ins Feld */
+input,select,textarea{width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;font-size:16px}
+input[type=checkbox]{width:auto;margin:0}
+textarea{min-height:110px;resize:vertical}
+button.p,label.p{padding:9px 14px;border:0;border-radius:8px;background:var(--acc);color:var(--onacc);font:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin:0}
+button.s,a.s,label.s{padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--tx);font:inherit;font-size:13px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;margin:0}
+button.s.warn,label.s.warn{color:var(--re)}
+/* Datei-Felder unsichtbar, das Label ist der Knopf (geht zuverlässig auf dem iPhone) */
+input.datei{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 0}
+.thumb{width:40px;height:40px;object-fit:cover;border-radius:6px;flex:none;background:var(--line)}
+.thumb.k{width:32px;height:32px}.thumb.g{width:96px;height:96px;border-radius:10px}
+.art{display:flex;gap:10px;align-items:flex-start}
+.kurz{display:none}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:top}
+th{color:var(--mut);font-weight:500;font-size:12px}
+tr.now td{font-weight:600}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;flex:none}
+.g{background:var(--gr)}.y{background:var(--ye)}.r{background:var(--re)}
+.hint{color:var(--ye);font-size:13px}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.stat{font-size:22px;font-weight:600}
+.muted{color:var(--mut);font-size:13px}
+.tbl{overflow-x:auto}
+.hide{display:none}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--mut);margin-left:4px;white-space:nowrap}
+.acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.task{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}
+.task:last-child{border-bottom:0}
+.task.rot .tt{color:var(--re);font-weight:600}
+.out{padding:8px 10px;border:1px dashed var(--line);border-radius:8px;min-height:38px}
+ul.chk{margin:8px 0;padding:0;list-style:none}
+ul.chk li{display:flex;align-items:center;font-size:13px;margin:3px 0}
+.ck{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--tx);margin:6px 0}
+p{margin:6px 0}
+/* Daumen: große Ziele auf Touch-Geräten */
+@media (pointer:coarse){
+  button.p,label.p,input,select{min-height:44px}
+  button.s,a.s,label.s{min-height:40px;padding:8px 12px;font-size:14px}
+  .chips button{min-height:36px}
+  .ck{min-height:36px}
+}
+/* Handy: Tabs unten, Artikel als Karten */
+@media (max-width:700px){
+  body{padding:calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(84px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left))}
+  #tabs{position:fixed;left:0;right:0;bottom:0;margin:0;z-index:10;background:var(--card);border-top:1px solid var(--line);padding:6px calc(4px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(4px + env(safe-area-inset-left));flex-wrap:nowrap;gap:2px}
+  #tabs button{flex:1;min-width:0;border:0;border-radius:10px;padding:12px 2px;font-size:13px;background:none}
+  #tabs button.on{background:var(--acc);color:var(--onacc)}
+  .lang{display:none}.kurz{display:inline}
+  #aktiv tr.kopf{display:none}
+  #aktiv tr{display:grid;grid-template-columns:repeat(3,auto);justify-content:start;gap:6px 18px;padding:12px 0;border-bottom:1px solid var(--line)}
+  #aktiv td{border:0;padding:0}
+  #aktiv td:first-child,#aktiv td:last-child{grid-column:1/-1}
+  #aktiv td[data-l]::before{content:attr(data-l);display:block;font-size:11px;color:var(--mut)}
+  #aktiv .acts{justify-content:flex-start}
+  .card{padding:12px}
+}
+</style>
+</head>
+<body>
+<h1>Vinted-Helfer</h1>
+<p class="sub">Läuft nur auf deinem Gerät. Nichts wird gesendet, kein Vinted-Login. Du kopierst Texte und klickst in Vinted selbst.</p>
+
+<div class="tabs" id="tabs">
+  <button data-t="heute" class="on">Heute</button>
+  <button data-t="liste">Artikel</button>
+  <button data-t="angebote"><span class="lang">Angebotstexte</span><span class="kurz">Texte</span></button>
+  <button data-t="rechner">Rechner</button>
+  <button data-t="zahlen">Zahlen</button>
+  <button data-t="daten">Daten</button>
+</div>
+
+<section id="t-heute">
+  <div class="card"><div class="row"><h2>Heute zu tun</h2><button class="p" id="h-paste">Link einfügen</button></div><div id="h-list"></div></div>
+  <div class="card"><h2>Saison</h2><div id="h-saison"></div></div>
+</section>
+
+<section id="t-liste" class="hide">
+  <div class="card hide" id="edit"></div>
+  <div class="card">
+    <div class="row"><h2>Neuer Artikel</h2><button class="p" id="n-paste">Link einfügen</button></div>
+    <p class="muted">In der Vinted-App: Teilen → Link kopieren. Dann hier „Link einfügen“ tippen und in der Blase „Einsetzen“ wählen.</p>
+    <p class="hint" id="n-msg"></p>
+    <div class="grid">
+      <div><label>Vinted-Link (optional)</label><input id="n-link" type="url" placeholder="https://www.vinted.de/items/…"></div>
+      <div><label>Name</label><input id="n-name" placeholder="Nike Hoodie grau M"></div>
+      <div><label>Status</label><select id="n-status"><option value="idee">Idee</option><option value="foto">Fotografiert</option><option value="eingestellt" selected>Eingestellt</option></select></div>
+      <div><label>Preis (€)</label><input id="n-preis" type="number" step="0.5" min="0" inputmode="decimal"></div>
+      <div><label>Mindestpreis (€)</label><input id="n-min" type="number" step="0.5" min="0" inputmode="decimal"></div>
+      <div><label>Einkaufspreis (€)</label><input id="n-ek" type="number" step="0.5" min="0" value="0" inputmode="decimal"></div>
+      <div><label>Eingestellt am</label><input id="n-datum" type="date"></div>
+    </div>
+    <div class="btns"><label class="s" for="n-foto">Foto</label><input type="file" id="n-foto" class="datei" accept="image/*"><img id="n-bild" class="thumb hide" alt=""><button class="s hide" id="n-bild-weg">Foto weg</button></div>
+    <p class="btns"><button class="p" id="add">Hinzufügen</button></p>
+  </div>
+  <div class="card">
+    <h2>Meine Artikel</h2>
+    <div class="chips" id="chips"></div>
+    <p class="muted">Ampel: grün bis 6 Tage, gelb 7 bis 13 Tage, rot ab 14 Tagen. Vorschlag: alle 7 Tage 5 % weniger, nie unter dem Mindestpreis.</p>
+    <div class="tbl"><table id="aktiv"></table></div>
+  </div>
+</section>
+
+<section id="t-angebote" class="hide">
+  <div class="card">
+    <h2>Text für Interessenten</h2>
+    <div class="grid">
+      <div><label>Artikel</label><select id="a-item"></select></div>
+      <div><label>Vorlage</label><select id="a-tpl"></select></div>
+      <div><label>Rabatt (%)</label><input id="a-rab" type="number" min="0" max="50" value="10"></div>
+    </div>
+    <p class="muted" id="a-info"></p>
+    <label>Text</label>
+    <textarea id="a-text"></textarea>
+    <p style="margin:10px 0 0"><button class="p" id="a-copy">Kopieren</button> <span class="muted" id="a-msg"></span></p>
+  </div>
+</section>
+
+<section id="t-rechner" class="hide">
+  <div class="card">
+    <h2>Bündel-Rabatt</h2>
+    <p class="muted">Wähle die Artikel, die jemand zusammen kaufen will. Der Preis fällt nie unter die Summe deiner Mindestpreise.</p>
+    <div id="b-list"></div>
+    <div class="grid" style="margin-top:8px"><div><label>Rabatt (%)</label><input id="b-rab" type="number" min="0" max="50" value="15"></div></div>
+    <div id="b-out" style="margin-top:8px"></div>
+    <label>Text</label>
+    <textarea id="b-text"></textarea>
+    <p><button class="p" id="b-copy">Kopieren</button> <span class="muted" id="b-msg"></span></p>
+    <p class="muted">Tipp: Vinted hat in den Einstellungen eigene Paket-Rabatte. Prüf, ob du sie nutzt, dann sehen Käufer den Rabatt direkt.</p>
+  </div>
+  <div class="card">
+    <h2>Saison-Kalender</h2>
+    <p class="muted">Faustregeln, nicht belegt. Stell Sachen etwa einen Monat vor ihrer Saison ein.</p>
+    <div class="tbl"><table id="s-tab"></table></div>
+  </div>
+</section>
+
+<section id="t-zahlen" class="hide">
+  <div class="card"><h2>Dieser Monat</h2><div class="grid" id="z-monat"></div></div>
+  <div class="card"><h2>Gesamt</h2><div class="grid" id="z-gesamt"></div></div>
+  <div class="card">
+    <h2>Verkauft</h2>
+    <div class="tbl"><table id="verkauft"></table></div>
+  </div>
+</section>
+
+<section id="t-daten" class="hide">
+  <div class="card">
+    <h2>Sicherung und Abgleich</h2>
+    <p class="muted">Die Daten liegen nur auf diesem Gerät. Mac und iPhone haben getrennte Speicher. Abgleich: auf einem Gerät sichern, die Datei per AirDrop schicken, auf dem anderen „zusammenführen“. Je Artikel gewinnt die neuere Änderung.</p>
+    <p id="d-last" class="muted"></p>
+    <p id="d-size" class="muted"></p>
+    <div class="btns"><button class="p hide" id="exp-share">Teilen (AirDrop, Dateien)</button><button class="p" id="exp">Herunterladen</button></div>
+    <h3>Importieren</h3>
+    <div class="btns">
+      <label class="p" for="imp-merge">Datei zusammenführen</label><input type="file" id="imp-merge" class="datei" accept=".json,application/json,text/plain">
+      <label class="s warn" for="imp-replace">Datei ersetzt alles</label><input type="file" id="imp-replace" class="datei" accept=".json,application/json,text/plain">
+    </div>
+  </div>
+  <div class="card">
+    <h2>Dieses Gerät</h2>
+    <div id="d-geraet"></div>
+  </div>
+</section>
+
+<script>
+/* LOGIK-START: reine Rechenlogik ohne Seite, wird in test.js geprüft */
+const STATUS=[['idee','Idee'],['foto','Fotografiert'],['eingestellt','Eingestellt'],['verkauft','Verkauft'],['versendet','Versendet'],['bewertet','Bewertet']];
+const SL=Object.fromEntries(STATUS);
+const VERKAUFT=['verkauft','versendet','bewertet'];
+const NEXT={idee:['foto','Fotografiert'],foto:['eingestellt','Eingestellt'],eingestellt:['verkauft','Verkauft'],verkauft:['versendet','Versendet'],versendet:['bewertet','Bewertet']};
+const RELIST_TAGE=5,NACHFASS_TAGE=2,VERSAND_WT=5,EXPORT_TAGE=7,BEWERT_TAGE=2;
+const FOTOS=[['titel','Titelbild hell und klar, ruhiger Hintergrund'],['vorne','Ganzes Teil von vorne'],['hinten','Rückseite'],['etikett','Etikett mit Marke und Größe'],['pflege','Pflegeetikett oder Material'],['details','Details (Stoff, Nähte, Logo)'],['fehler','Jeder Fehler einzeln']];
+const ZUSTAND=['Neu mit Etikett','Neu ohne Etikett','Sehr gut','Gut','Zufriedenstellend'];
+const AENDERUNG=['Titelbild','Titel','Preis','Beschreibung','Fotos neu sortiert'];
+// [Monat, was gerade gut läuft, was du jetzt einstellst]
+const SAISON=[
+ ['Januar','Sportkleidung (Vorsätze), Winterjacken-Reste','Übergangsjacken vorbereiten'],
+ ['Februar','Skisachen, Winter-Reste','Übergangsjacken, Sneaker'],
+ ['März','Übergangsjacken, Sneaker','Frühlingssachen, Jeansjacken'],
+ ['April','Frühlingssachen, Sneaker, Fahrrad-Zubehör','Sommerkleidung, Shorts'],
+ ['Mai','Sommerkleidung, Shorts, Festival','Badesachen'],
+ ['Juni','Badesachen, Festival, Urlaub','Schulsachen, Rucksäcke'],
+ ['Juli','Sommer-Reste, Urlaub','Schulsachen, erste Herbstjacken'],
+ ['August','Schulsachen, Rucksäcke','Hoodies, Herbstjacken, Kampfsport-Sachen'],
+ ['September','Hoodies, Herbstjacken, Kampfsport (neue Kurse)','Winterjacken, Stiefel'],
+ ['Oktober','Winterjacken, Stiefel, Kostüme','Geschenke (Technik, Lego, Spiele)'],
+ ['November','Winterjacken, Geschenke','Partykleidung, Skisachen'],
+ ['Dezember','Geschenke bis etwa 15.12. (Versand), Partykleidung','Sportkleidung für Januar']
+];
+const pad=n=>String(n).padStart(2,'0');
+const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const today=()=>iso(new Date());
+const toDate=s=>{const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
+const fmt=s=>s?s.slice(8,10)+'.'+s.slice(5,7)+'.':'';
+const eur=n=>(Math.round((n||0)*100)/100).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+// round statt floor, sonst fehlt nach der Zeitumstellung ein Tag
+const ageDays=(s,ref)=>s?Math.max(0,Math.round((toDate(ref||today())-toDate(s))/86400000)):0;
+const round05=n=>Math.round(n*2)/2;
+const num=s=>{const x=parseFloat(String(s??'').replace(',','.'));return isNaN(x)?null:x};
+// Preisvorschlag: alle 7 Tage 5 % weniger vom Startpreis, nie unter Mindestpreis
+function vorschlag(it,ref){
+  if(!it.datum||!(it.start>0))return it.preis;
+  const p=round05(it.start*Math.pow(0.95,Math.floor(ageDays(it.datum,ref)/7)));
+  return Math.max(it.min||0,p);
+}
+function angebotPreis(it,rab){return Math.max(it.min||0,round05(it.preis*(1-rab/100)))}
+function ampel(tage){return tage<7?'g':tage<14?'y':'r'}
+function addWerktage(s,n){
+  const d=toDate(s);let k=0;
+  while(k<n){d.setDate(d.getDate()+1);const w=d.getDay();if(w!==0&&w!==6)k++}
+  return iso(d);
+}
+// Werktage von "von" bis "bis", negativ wenn "bis" schon vorbei ist
+function werktageBis(von,bis){
+  const a=toDate(von),b=toDate(bis);if(+a===+b)return 0;
+  const sign=b>a?1:-1,d=new Date(a);let n=0;
+  while(+d!==+b){d.setDate(d.getDate()+sign);const w=d.getDay();if(w!==0&&w!==6)n+=sign}
+  return n;
+}
+const fotoStand=it=>FOTOS.filter(([k])=>it.fotos&&it.fotos[k]).length;
+const parsePreise=s=>String(s||'').split(/[\s;\/]+/).map(num).filter(x=>x>0);
+// Faustregel: Mittelwert der Konkurrenz mal 0,85
+function preisCheck(list,own){
+  const n=list.length;if(!n)return null;
+  const s=[...list].sort((a,b)=>a-b),mittel=s.reduce((a,b)=>a+b,0)/n;
+  const median=n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2;
+  return {n,mittel,median,min:s[0],max:s[n-1],vorschlag:round05(mittel*0.85),diff:own>0?(own-mittel)/mittel*100:null};
+}
+function buendel(list,rab){
+  const summe=list.reduce((s,i)=>s+(i.preis||0),0);
+  const boden=list.reduce((s,i)=>s+(i.min??i.preis??0),0);
+  const roh=round05(summe*(1-rab/100)),preis=Math.max(boden,roh);
+  return {summe,boden,preis,ersparnis:summe-preis,bodenGreift:roh<boden};
+}
+// Vinted-Link prüfen und kürzen, Name aus dem Link lesen. Der Helfer ruft den Link nie ab.
+function parseLink(s){
+  const m=String(s||'').trim().match(/^https?:\/\/(?:www\.)?vinted\.([a-z]{2,3}(?:\.[a-z]{2})?)\/items\/(\d+)(?:-([^?#\/\s]*))?/i);
+  if(!m)return null;
+  let slug=m[3]||'';try{slug=decodeURIComponent(slug)}catch(e){}
+  const name=slug.split('-').filter(Boolean).map(w=>w[0].toUpperCase()+w.slice(1)).join(' ');
+  return {link:`https://www.vinted.${m[1].toLowerCase()}/items/${m[2]}${m[3]?'-'+m[3]:''}`,id:m[2],name};
+}
+// Geteilter Text aus der Vinted-App kann Text plus Link sein: den ersten Vinted-Artikel-Link nehmen
+function linkAusText(s){
+  for(const u of String(s||'').match(/https?:\/\/[^\s<>"']+/gi)||[]){const p=parseLink(u);if(p)return p}
+  return null;
+}
+// Import zusammenführen: je Artikel gewinnt die neuere Änderung, ein jüngerer Lösch-Vermerk entfernt ihn.
+// Das Bild folgt dem neueren Foto (bildAm), damit ein Foto vom iPhone nicht verloren geht, wenn am Mac der Preis geändert wurde.
+function zusammenfuehren(a,b){
+  const del={...(a.geloescht||{})};
+  for(const [id,t] of Object.entries(b.geloescht||{}))if(!(del[id]>=t))del[id]=t;
+  const A=new Map((a.items||[]).map(i=>[String(i.id),i])),B=new Map((b.items||[]).map(i=>[String(i.id),i]));
+  const items=[],bilder={},n={neu:0,aktualisiert:0,entfernt:0};
+  for(const id of new Set([...A.keys(),...B.keys()])){
+    const x=A.get(id),y=B.get(id),nimmB=!!y&&(!x||(y.geaendert||0)>(x.geaendert||0));
+    let it=nimmB?y:x,quelle=nimmB?b:a;
+    if(del[id]!=null&&del[id]>=(it.geaendert||0)){if(x)n.entfernt++;continue}
+    if(nimmB)x?n.aktualisiert++:n.neu++;
+    if(x&&y){
+      const bx=x.bildAm||0,by=y.bildAm||0;
+      if(bx!==by){quelle=by>bx?b:a;if((it.bildAm||0)!==Math.max(bx,by))it={...it,bildAm:Math.max(bx,by)}}
+    }
+    items.push(it);
+    const bild=(quelle.bilder||{})[id];if(bild)bilder[id]=bild;
+  }
+  return {items,geloescht:del,bilder,...n};
+}
+const groesse=b=>b<1048576?Math.max(1,Math.round(b/1024))+' KB':(b/1048576).toFixed(1).replace('.',',')+' MB';
+const zustandKurz=z=>z==='Neu mit Etikett'?'neu mit Etikett':z==='Neu ohne Etikett'?'neu':'';
+function titel(it){
+  const g=String(it.groesse||'').trim();
+  return [it.marke,it.typ,it.farbe,it.material,g?(/^gr/i.test(g)?g:'Gr. '+g):'',zustandKurz(it.zustand),it.extra]
+    .map(x=>String(x||'').trim()).filter(Boolean).join(' ');
+}
+function titelChecks(it,t){
+  const c=[],L=t.length;
+  if(!it.typ)c.push(['r','Typ fehlt (z. B. Hoodie, Gi, Sneaker).']);
+  if(!it.marke)c.push(['y','Marke fehlt. Viele suchen zuerst nach der Marke. Ohne Marke den Typ genauer beschreiben.']);
+  if(!it.groesse)c.push(['y','Größe fehlt.']);
+  if(!it.farbe)c.push(['y','Farbe fehlt.']);
+  if(L&&L<20)c.push(['y',`Nur ${L} Zeichen. Mehr Suchbegriffe helfen (Richtwert).`]);
+  if(L>60)c.push(['y',`${L} Zeichen. Der Anfang zählt am meisten, Wichtiges nach vorn (Richtwert).`]);
+  if(/!{2,}|[A-ZÄÖÜ]{5,}/.test(t))c.push(['y','Keine Wörter in Großbuchstaben und kein „!!“, das wirkt unseriös.']);
+  const w=t.toLowerCase().split(/\s+/).filter(x=>x.length>2);
+  if(new Set(w).size<w.length)c.push(['y','Ein Wort kommt doppelt vor.']);
+  if(/(^|\s)(wie|Wie|style|Style|like|Like|ähnlich)\s+[A-ZÄÖÜ]/.test(t))c.push(['r','Keine fremden Marken mit „wie“ oder „Style“, das gilt als irreführend.']);
+  if(L&&!c.length)c.push(['g','Titel sieht gut aus.']);
+  return c;
+}
+function beschreibung(it){
+  const z=[],kopf=[it.marke,it.typ].filter(Boolean).join(' ');
+  if(kopf)z.push(kopf+(it.farbe?' in '+it.farbe:'')+(it.groesse?', Größe '+it.groesse:'')+'.');
+  if(it.material)z.push('Material: '+it.material+'.');
+  if(it.zustand)z.push('Zustand: '+it.zustand+'.');
+  z.push(it.maengel?'Mängel: '+it.maengel+' (siehe Fotos).':'Keine Mängel bekannt.');
+  if(it.masse)z.push('Maße: '+it.masse+'.');
+  z.push('Versand innerhalb von 1 bis 2 Tagen. Schau gern in meine anderen Artikel, bei mehreren Teilen gibt es Rabatt.');
+  return z.join('\n');
+}
+// alte Daten (Phase 1) und Importe auf den neuen Stand bringen
+function migrate(list){
+  const seen=new Set();
+  return (Array.isArray(list)?list:[]).filter(i=>i&&typeof i==='object').map((i,n)=>{
+    const it={...i};
+    if(it.status==='aktiv')it.status='eingestellt';
+    if(!SL[it.status])it.status='eingestellt';
+    if(!String(it.name||'').trim())it.name='Ohne Namen';
+    if(it.id==null||seen.has(String(it.id)))it.id=Date.now()*1000+n;
+    seen.add(String(it.id));
+    if(it.status==='eingestellt'&&!it.gelistet)it.gelistet=it.datum||today();
+    if(!it.fotos||typeof it.fotos!=='object')it.fotos={};
+    return it;
+  });
+}
+// Heute-Liste: p = Reihenfolge, kleiner ist wichtiger
+function heute(items,meta,ref){
+  ref=ref||today();const T=[];
+  for(const it of items){
+    if(it.status==='verkauft'&&it.verkauftAm){
+      const f=addWerktage(it.verkauftAm,VERSAND_WT),r=werktageBis(ref,f);
+      T.push({p:r<=1?0:2,typ:'versand',id:it.id,rot:r<=1,txt:'Versenden: '+it.name,
+        info:r<0?`Frist war am ${fmt(f)}, ${-r} Werktag(e) drüber`:r===0?`Frist ist heute (${fmt(f)})`:`Frist ${fmt(f)}, noch ${r} Werktag(e)`});
+    }
+    if(it.status==='eingestellt'){
+      if(it.interessentAm&&!it.nachgefasst){const d=ageDays(it.interessentAm,ref);
+        if(d>=NACHFASS_TAGE)T.push({p:2,typ:'nach',id:it.id,txt:'Nachfassen: '+it.name,info:`Interessent seit ${d} Tagen`})}
+      const v=vorschlag(it,ref);
+      if(v<it.preis-0.01)T.push({p:3,typ:'senk',id:it.id,txt:'Preis senken: '+it.name,info:`von ${eur(it.preis)} auf ${eur(v)}. Erst in Vinted ändern, dann hier bestätigen`});
+      const g=ageDays(it.gelistet||it.datum,ref);
+      if(g>=RELIST_TAGE)T.push({p:4,typ:'relist',id:it.id,txt:'Neu einstellen: '+it.name,info:`seit ${g} Tagen online. Mindestens 3 Dinge ändern`});
+    }
+    if(it.status==='foto')T.push({p:5,typ:'stellen',id:it.id,txt:'Einstellen: '+it.name,info:`Foto-Checkliste ${fotoStand(it)} von ${FOTOS.length}`});
+    if(it.status==='versendet'&&ageDays(it.versendetAm||ref,ref)>=BEWERT_TAGE)T.push({p:6,typ:'bew',id:it.id,txt:'Bewerten: '+it.name,info:'Wenn es angekommen ist, den Käufer bewerten'});
+    if(it.status==='idee')T.push({p:7,typ:'foto',id:it.id,txt:'Fotografieren: '+it.name,info:'Bei Tageslicht, Foto-Checkliste unter Bearbeiten'});
+  }
+  if(meta.postfach!==ref)T.push({p:1,typ:'post',txt:'Vinted-Nachrichten prüfen',info:'Innerhalb von 24 Stunden antworten'});
+  if(items.length&&(!meta.export||ageDays(meta.export,ref)>=EXPORT_TAGE))T.push({p:8,typ:'export',txt:'Daten sichern',info:meta.export?`Zuletzt am ${fmt(meta.export)}`:'Noch nie gesichert'});
+  return T.sort((a,b)=>a.p-b.p);
+}
+/* LOGIK-END */
+
+const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='4.0 vom 12.10.2026',BILD_PX=160;
+const ADRESSE='https://antont10.github.io/vinted-helfer/';
+const TABS=['heute','liste','angebote','rechner','zahlen','daten'];
+let items=[],meta={},editId=null,filt='offen',relistId=null,relistWarn=false,stand=new Map(),nBild=null,db=null,dauerhaft=null;
+const bSel=new Set(),bilder=new Map();
+// Stand jedes Artikels ohne Zeitstempel, damit save() Änderungen erkennt
+const sig=i=>JSON.stringify({...i,geaendert:undefined});
+function merkeStand(){stand=new Map(items.map(i=>[String(i.id),sig(i)]))}
+function load(){
+  try{items=migrate(JSON.parse(localStorage.getItem(KEY)))}catch(e){items=[]}
+  try{meta=JSON.parse(localStorage.getItem(MKEY))||{}}catch(e){meta={}}
+  if(!meta.geloescht||typeof meta.geloescht!=='object')meta.geloescht={};
+  merkeStand();
+}
+// Geänderte Artikel bekommen einen Zeitstempel, den braucht das Zusammenführen
+function save(){
+  const jetzt=Date.now();
+  for(const i of items)if(stand.get(String(i.id))!==sig(i))i.geaendert=jetzt;
+  merkeStand();
+  try{localStorage.setItem(KEY,JSON.stringify(items));localStorage.setItem(MKEY,JSON.stringify(meta))}catch(e){alert('Speichern im Browser nicht möglich. Bitte exportieren.')}
+}
+// Vorschaubilder in IndexedDB (localStorage ist in Safari zu klein). Ohne IndexedDB nur bis zum Schließen.
+function dbOpen(){return new Promise(ok=>{try{const r=indexedDB.open('vinted-helfer',1);r.onupgradeneeded=()=>r.result.createObjectStore('bilder');r.onsuccess=()=>ok(r.result);r.onerror=()=>ok(null)}catch(e){ok(null)}})}
+function dbTx(fn){
+  if(!db)return Promise.resolve(false);
+  return new Promise(ok=>{try{const t=db.transaction('bilder','readwrite');fn(t.objectStore('bilder'));t.oncomplete=()=>ok(true);t.onerror=t.onabort=()=>ok(false)}catch(e){ok(false)}});
+}
+async function bilderLaden(){
+  db=await dbOpen();if(!db)return;
+  await new Promise(ok=>{try{const r=db.transaction('bilder').objectStore('bilder').openCursor();
+    r.onsuccess=()=>{const c=r.result;if(!c)return ok();if(istBild(c.value))bilder.set(String(c.key),c.value);c.continue()};r.onerror=()=>ok()}catch(e){ok()}});
+}
+const istBild=s=>typeof s==='string'&&/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s);
+function bildSetzen(id,url){id=String(id);url?bilder.set(id,url):bilder.delete(id);return dbTx(s=>url?s.put(url,id):s.delete(id))}
+function bildTag(it,k=''){const b=it&&bilder.get(String(it.id));return b?`<img class="thumb ${k}" src="${esc(b)}" alt="">`:''}
+// Foto auf 160 px lange Seite verkleinern, JPEG, ca. 5 bis 10 KB
+async function verkleinern(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=url});
+    const k=Math.min(1,BILD_PX/Math.max(img.naturalWidth,img.naturalHeight)),c=document.createElement('canvas');
+    c.width=Math.max(1,Math.round(img.naturalWidth*k));c.height=Math.max(1,Math.round(img.naturalHeight*k));
+    const g=c.getContext('2d');g.imageSmoothingQuality='high';g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);
+    return c.toDataURL('image/jpeg',0.7);
+  }finally{URL.revokeObjectURL(url)}
+}
+async function fotoLesen(input){
+  const f=input.files&&input.files[0];input.value='';if(!f)return null;
+  try{return await verkleinern(f)}catch(e){alert('Dieses Foto kann der Browser nicht lesen. Bitte ein JPEG oder PNG wählen.');return null}
+}
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const byId=id=>items.find(i=>String(i.id)===String(id));
+// eindeutige ID, auch wenn zwei Artikel in derselben Millisekunde entstehen
+const newId=()=>{let id=Date.now();while(items.some(i=>String(i.id)===String(id)))id++;return id};
+function askNum(msg,def){
+  const s=prompt(msg,def==null?'':String(def).replace('.',','));if(s===null)return null;
+  const x=num(s);if(x===null||x<0){alert('Bitte eine Zahl eintragen.');return null}
+  return x;
+}
+async function copy(t,el){
+  if(!t)return;
+  try{await navigator.clipboard.writeText(t)}catch(e){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove()}
+  if(el){el.textContent='Kopiert.';setTimeout(()=>el.textContent='',2000)}
+}
+function setStatus(it,s){
+  const vor=it.status;if(s===vor)return true;
+  if(s==='eingestellt'&&(vor==='idee'||vor==='foto')){
+    if(!(it.preis>0)){const p=askNum('Preis in Vinted (€):');if(p===null)return false;it.preis=p}
+    if(it.min==null)it.min=it.preis;
+    it.start=it.preis;it.datum=today();it.gelistet=today();
+  }
+  if(VERKAUFT.includes(s)&&!VERKAUFT.includes(vor)){
+    const vk=askNum('Verkaufspreis in €:',it.preis);if(vk===null)return false;
+    const k=askNum('Deine Kosten (z. B. Porto, Verpackung) in €, sonst 0:',0);if(k===null)return false;
+    it.vk=vk;it.kosten=k;it.verkauftAm=today();
+  }
+  if(s==='versendet'&&!it.versendetAm)it.versendetAm=today();
+  if(s==='bewertet'&&!it.bewertetAm)it.bewertetAm=today();
+  it.status=s;save();return true;
+}
+function go(t){
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  TABS.forEach(x=>$('#t-'+x).classList.toggle('hide',x!==t));
+  renderAll();window.scrollTo(0,0);
+}
+function card(l,v){return `<div><label>${l}</label><div class="stat">${v}</div></div>`}
+// Link öffnet das Inserat in einem neuen Tab, du klickst dort selbst
+function linkBtn(it,l='In Vinted öffnen'){const p=it&&parseLink(it.link);return p?`<a class="s" href="${esc(p.link)}" target="_blank" rel="noopener noreferrer">${l} ↗</a>`:''}
+
+// Heute
+function taskBtns(t){
+  const b=(h,l)=>`<button class="s" data-h="${h}" data-id="${t.id??''}">${l}</button>`;
+  return ({versand:b('versendet','Versendet'),post:b('post','Erledigt'),nach:b('nachtext','Text')+b('nachok','Erledigt'),
+    senk:b('senk','Übernommen'),relist:b('relist','Neu eingestellt'),stellen:b('edit','Bearbeiten')+b('eingestellt','Eingestellt'),
+    bew:b('bewertet','Bewertet'),foto:b('foto','Fotografiert'),export:b('export','Sichern')}[t.typ]||'')+(t.id!=null?linkBtn(byId(t.id),'Vinted'):'');
+}
+function relistForm(id){
+  return `<div style="margin-top:8px"><p class="muted">Was hast du geändert?</p>${AENDERUNG.map(a=>`<label class="ck"><input type="checkbox" data-rl> ${a}</label>`).join('')}
+  <button class="s" data-h="relistok" data-id="${id}">Bestätigen</button> <span class="hint" id="rl-msg"></span></div>`;
+}
+function renderHeute(){
+  const T=heute(items,meta);
+  $('#h-list').innerHTML=T.length?T.map(t=>`<div class="task${t.rot?' rot':''}"><div class="art">${t.id!=null?bildTag(byId(t.id),'k'):''}<div><div class="tt">${esc(t.txt)}</div><div class="muted">${esc(t.info)}</div>${t.typ==='relist'&&String(relistId)===String(t.id)?relistForm(t.id):''}</div></div><div class="acts">${taskBtns(t)}</div></div>`).join('')
+    :'<p class="muted">Alles erledigt für heute.</p>';
+  const s=SAISON[new Date().getMonth()];
+  $('#h-saison').innerHTML=`<p><b>${s[0]}:</b> gut läuft ${esc(s[1])}.</p><p>Jetzt einstellen: ${esc(s[2])}.</p><p class="muted">Faustregeln, nicht belegt. Ganzer Kalender unter Rechner.</p>`;
+}
+$('#h-list').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-h]');if(!b)return;
+  const h=b.dataset.h,it=byId(b.dataset.id);
+  if(h==='post'){meta.postfach=today();save()}
+  else if(h==='export'){sichern();return}
+  else if(!it)return;
+  else if(h==='nachtext'){go('angebote');$('#a-item').value=String(it.id);$('#a-tpl').value='3';fillText();return}
+  else if(h==='nachok'){it.nachgefasst=true;save()}
+  else if(h==='senk'){it.preis=vorschlag(it);save()}
+  else if(h==='relist'){relistId=String(relistId)===String(it.id)?null:it.id;relistWarn=false}
+  else if(h==='relistok'){
+    const n=document.querySelectorAll('#h-list [data-rl]:checked').length;
+    if(n<3&&!relistWarn){relistWarn=true;$('#rl-msg').textContent=`Erst ${n} Änderung(en). Mit weniger als 3 bringt Neu-Einstellen wenig (Richtwert). Nochmal tippen speichert trotzdem.`;return}
+    it.gelistet=today();it.relists=(it.relists||0)+1;relistId=null;relistWarn=false;save();
+  }
+  else if(h==='edit'){go('liste');openEdit(it.id);return}
+  else if(['versendet','bewertet','foto','eingestellt'].includes(h)){setStatus(it,h)}
+  renderAll();
+});
+
+// Artikel-Liste
+const offen=i=>['idee','foto','eingestellt','verkauft'].includes(i.status);
+function info(it){
+  const f=`Fotos ${fotoStand(it)}/${FOTOS.length}`;
+  if(it.status==='eingestellt')return `eingestellt ${fmt(it.datum)}`+(it.gelistet&&it.gelistet!==it.datum?`, neu ${fmt(it.gelistet)}`:'')+' · '+f;
+  if(it.status==='verkauft')return `verkauft ${fmt(it.verkauftAm)}, versenden bis ${fmt(addWerktage(it.verkauftAm||today(),VERSAND_WT))}`;
+  if(it.status==='versendet')return `versendet ${fmt(it.versendetAm)}`;
+  if(it.status==='bewertet')return `verkauft ${fmt(it.verkauftAm)} für ${eur(it.vk)}`;
+  return f;
+}
+function renderListe(){
+  const cnt=s=>items.filter(i=>i.status===s).length;
+  $('#chips').innerHTML=[['offen','Offen',items.filter(offen).length],...STATUS.map(([k,l])=>[k,l,cnt(k)]),['alle','Alle',items.length]]
+    .map(([k,l,n])=>`<button data-f="${k}" class="${filt===k?'on':''}">${l} ${n}</button>`).join('');
+  const idx=s=>STATUS.findIndex(x=>x[0]===s);
+  const rows=items.filter(i=>filt==='alle'||(filt==='offen'?offen(i):i.status===filt))
+    .sort((a,b)=>idx(a.status)-idx(b.status)||ageDays(b.datum)-ageDays(a.datum)||String(b.id).localeCompare(String(a.id)));
+  let h='<tr class="kopf"><th>Artikel</th><th>Tage</th><th>Preis</th><th>Vorschlag</th><th></th></tr>';
+  if(!rows.length)h+='<tr><td colspan="5" class="muted">Keine Artikel in dieser Ansicht.</td></tr>';
+  for(const it of rows){
+    const on=it.status==='eingestellt',t=on?ageDays(it.datum):null,v=on?vorschlag(it):null,senk=on&&v<it.preis-0.01,nx=NEXT[it.status],id=esc(it.id);
+    h+=`<tr><td><div class="art">${bildTag(it)}<div>${esc(it.name)} <span class="badge">${SL[it.status]}</span><div class="muted">${esc(info(it))}</div>${linkBtn(it,'Vinted')}</div></div></td>
+    <td class="num" data-l="Tage">${t==null?'–':`<span class="dot ${ampel(t)}"></span>${t}`}</td>
+    <td class="num" data-l="Preis">${it.preis!=null?eur(it.preis):'–'}</td>
+    <td class="num" data-l="Vorschlag">${senk?`<span class="hint">auf ${eur(v)}</span><br><button class="s" data-a="senk" data-id="${id}">Übernehmen</button>`:on?'<span class="muted">passt</span>':'–'}</td>
+    <td><div class="acts"><button class="s" data-a="edit" data-id="${id}">Bearbeiten</button>${nx?`<button class="s" data-a="next" data-id="${id}">${nx[1]}</button>`:''}<button class="s warn" data-a="del" data-id="${id}">Löschen</button></div></td></tr>`;
+  }
+  $('#aktiv').innerHTML=h;
+}
+$('#chips').addEventListener('click',e=>{const f=e.target.dataset.f;if(!f)return;filt=f;renderListe()});
+$('#aktiv').addEventListener('click',e=>{
+  const a=e.target.dataset.a;if(!a)return;
+  const it=byId(e.target.dataset.id);if(!it)return;
+  if(a==='edit'){openEdit(it.id);return}
+  if(a==='senk'){it.preis=vorschlag(it);save()}
+  if(a==='next'){setStatus(it,NEXT[it.status][0])}
+  if(a==='del'){if(!confirm('Artikel wirklich löschen?'))return;
+    // Lösch-Vermerk, damit der Artikel beim Zusammenführen nicht zurückkommt
+    items=items.filter(i=>i!==it);meta.geloescht[String(it.id)]=Date.now();bildSetzen(it.id,null);save();if(String(editId)===String(it.id))closeEdit()}
+  if(String(editId)===String(it.id))renderEdit();
+  renderAll();
+});
+// Link einfügen füllt den Namen aus dem Link, wenn er noch leer ist. Geteilter Text wird auf den Link gekürzt.
+$('#n-link').addEventListener('input',()=>{
+  const v=$('#n-link').value,p=linkAusText(v);if(!p)return;
+  if(/\s/.test(v.trim()))$('#n-link').value=p.link;
+  if(p.name&&!$('#n-name').value.trim())$('#n-name').value=p.name;
+});
+function zeigeBildNeu(){const on=!!nBild;$('#n-bild').classList.toggle('hide',!on);$('#n-bild-weg').classList.toggle('hide',!on);if(on)$('#n-bild').src=nBild;else $('#n-bild').removeAttribute('src')}
+$('#n-foto').addEventListener('change',async e=>{const u=await fotoLesen(e.target);if(u){nBild=u;zeigeBildNeu()}});
+$('#n-bild-weg').addEventListener('click',()=>{nBild=null;zeigeBildNeu()});
+$('#add').addEventListener('click',()=>{
+  const name=$('#n-name').value.trim(),st=$('#n-status').value,preis=num($('#n-preis').value);
+  const rawLink=$('#n-link').value.trim(),pl=linkAusText(rawLink);
+  if(rawLink&&!pl){alert('Das ist kein Vinted-Artikel-Link. Er sieht so aus: https://www.vinted.de/items/1234567890-name');return}
+  if(!name){alert('Bitte einen Namen eintragen.');return}
+  if(st==='eingestellt'&&!(preis!==null&&preis>=0)){alert('Für eingestellte Artikel bitte den Preis eintragen.');return}
+  const min=num($('#n-min').value);
+  const it={id:newId(),name,status:st,preis,start:preis,min:min==null?preis:(preis!=null?Math.min(min,preis):min),ek:num($('#n-ek').value)||0,kosten:0,fotos:{}};
+  if(pl)it.link=pl.link;
+  if(st==='eingestellt'){it.datum=$('#n-datum').value||today();it.gelistet=it.datum}
+  if(nBild){bildSetzen(it.id,nBild);it.bildAm=Date.now();nBild=null;zeigeBildNeu()}
+  items.push(it);save();['n-link','n-name','n-preis','n-min'].forEach(id=>$('#'+id).value='');$('#n-msg').textContent='';renderAll();
+});
+// Knopf „Link einfügen“: liest die Zwischenablage erst nach deinem Tipp. iOS zeigt dann die Blase „Einsetzen“.
+async function linkEinfuegen(){
+  let t='';
+  try{t=await navigator.clipboard.readText()}catch(e){}
+  if(!t.trim()){go('liste');$('#n-msg').textContent='Zwischenablage nicht lesbar. Lang ins Feld „Vinted-Link“ drücken und „Einsetzen“ wählen.';$('#n-link').focus();return}
+  linkUebernehmen(t);
+}
+// Link übernehmen: Artikel schon da → Bearbeiten, sonst Formular füllen. Der Helfer ruft den Link nie ab.
+function linkUebernehmen(text){
+  const p=linkAusText(text);go('liste');
+  if(!p){$('#n-msg').textContent='Kein Vinted-Artikel-Link gefunden. In der Vinted-App: Teilen → Link kopieren.';return false}
+  const da=items.find(i=>{const q=parseLink(i.link);return q&&q.id===p.id});
+  if(da){$('#n-msg').textContent='';openEdit(da.id);return true}
+  $('#n-link').value=p.link;if(p.name)$('#n-name').value=p.name;$('#n-status').value='eingestellt';
+  $('#n-msg').textContent='Link übernommen. Jetzt Preis und Mindestpreis eintragen.';$('#n-preis').focus();
+  return true;
+}
+$('#h-paste').addEventListener('click',linkEinfuegen);
+$('#n-paste').addEventListener('click',linkEinfuegen);
+
+// Bearbeiten: Titel-Baukasten, Beschreibung, Foto-Checkliste, Preis-Check, Interessenten
+function fld(f,l,type='text',ph=''){
+  const it=byId(editId),attr=type==='number'?'step="0.5" min="0" inputmode="decimal"':type==='int'?'step="1" min="0" inputmode="numeric"':'';
+  return `<div><label>${l}</label><input data-f="${f}" type="${type==='int'?'number':type}" value="${esc(it[f])}" ${attr}${ph?` placeholder="${esc(ph)}"`:''}></div>`;
+}
+function sel(f,l,opts){
+  const it=byId(editId);
+  return `<div><label>${l}</label><select data-f="${f}">${opts.map(([k,t])=>`<option value="${esc(k)}"${(it[f]||'')===k?' selected':''}>${esc(t)}</option>`).join('')}</select></div>`;
+}
+function openEdit(id){editId=id;renderEdit();$('#edit').classList.remove('hide');$('#edit').scrollIntoView({behavior:'smooth',block:'start'})}
+function closeEdit(){editId=null;$('#edit').classList.add('hide');$('#edit').innerHTML=''}
+function renderEdit(){
+  const it=byId(editId);if(!it){closeEdit();return}
+  $('#edit').innerHTML=`<div class="row"><h2>Bearbeiten</h2><button class="s" data-e="close">Schließen</button></div>
+  <div class="grid">${fld('link','Vinted-Link','url','https://www.vinted.de/items/…')}${fld('name','Name')}${sel('status','Status',STATUS)}${fld('preis','Preis (€)','number')}${fld('min','Mindestpreis (€)','number')}${fld('ek','Einkaufspreis (€)','number')}${fld('datum','Eingestellt am','date')}${fld('gelistet','Zuletzt neu eingestellt','date')}</div>
+  <p id="e-link"></p>
+  <div class="btns">${bildTag(it,'g')}<label class="s" for="e-foto">${bilder.has(String(it.id))?'Foto ändern':'Foto wählen'}</label><input type="file" id="e-foto" class="datei" accept="image/*">${bilder.has(String(it.id))?'<button class="s" data-e="bildweg">Foto entfernen</button>':''}</div>
+  <h3>Titel-Baukasten</h3>
+  <div class="grid">${fld('marke','Marke','text','Nike')}${fld('typ','Typ','text','Hoodie')}${fld('farbe','Farbe','text','grau')}${fld('material','Material','text','Baumwolle')}${fld('groesse','Größe','text','M')}${sel('zustand','Zustand',[['','–'],...ZUSTAND.map(z=>[z,z])])}${fld('extra','Extra','text','Oversize, Vintage')}</div>
+  <label style="margin-top:10px">Titel-Vorschlag</label><div class="out" id="e-titel"></div><ul class="chk" id="e-checks"></ul>
+  <p><button class="s" data-e="tcopy">Titel kopieren</button> <button class="s" data-e="tname">Als Name übernehmen</button> <span class="muted" id="e-tmsg"></span></p>
+  <h3>Beschreibung</h3>
+  <div class="grid">${fld('maengel','Mängel (sonst leer)')}${fld('masse','Maße','text','Länge 70 cm')}</div>
+  <textarea id="e-beschr" readonly style="margin-top:8px"></textarea>
+  <p><button class="s" data-e="bcopy">Beschreibung kopieren</button> <span class="muted" id="e-bmsg"></span></p>
+  <h3>Foto-Checkliste <span class="muted" id="e-fstand"></span></h3>
+  ${FOTOS.map(([k,l])=>`<label class="ck"><input type="checkbox" data-foto="${k}"${it.fotos[k]?' checked':''}> ${esc(l)}</label>`).join('')}
+  <div class="grid" style="margin-top:8px">${fld('fotoN','Anzahl Fotos','int')}</div>
+  <p class="muted" id="e-fhint"></p>
+  <h3>Preis-Check</h3>
+  ${fld('konk','Preise ähnlicher Artikel auf Vinted in € (mit Leerzeichen getrennt)','text','25 30 22,50 28')}
+  <div id="e-pc" style="margin-top:8px"></div>
+  <h3>Interessenten</h3>
+  <div id="e-int"></div>`;
+  updEdit();
+}
+function updEdit(){
+  const it=byId(editId);if(!it)return;
+  $('#e-link').innerHTML=it.link&&!parseLink(it.link)?'<span class="hint">Kein Vinted-Artikel-Link. Er sieht so aus: https://www.vinted.de/items/1234567890-name</span>':linkBtn(it);
+  const t=titel(it);
+  $('#e-titel').textContent=t||'Felder ausfüllen, dann entsteht hier der Titel.';
+  $('#e-checks').innerHTML=titelChecks(it,t).map(([c,x])=>`<li><span class="dot ${c}"></span>${esc(x)}</li>`).join('');
+  $('#e-beschr').value=beschreibung(it);
+  $('#e-fstand').textContent=`${fotoStand(it)} von ${FOTOS.length}`;
+  const n=it.fotoN;
+  $('#e-fhint').textContent=n==null?'Richtwert: 8 bis 12 Fotos. Das Titelbild zählt am meisten.':n<8?`${n} Fotos, eher wenig (Richtwert 8 bis 12).`:`${n} Fotos, passt.`;
+  const pc=preisCheck(parsePreise(it.konk),it.preis);
+  $('#e-pc').innerHTML=!pc?'<p class="muted">Such in Vinted nach dem gleichen Artikel und trag die Preise hier ein. Faustregel: Mittelwert mal 0,85.</p>'
+    :`<p>${pc.n} Preise, Mittelwert ${eur(pc.mittel)}, Median ${eur(pc.median)}, Spanne ${eur(pc.min)} bis ${eur(pc.max)}.</p>
+    <p><b>Vorschlag: ${eur(pc.vorschlag)}</b>${pc.diff!=null?` · dein Preis liegt ${Math.abs(Math.round(pc.diff))} % ${pc.diff>=0?'über':'unter'} dem Mittelwert`:''}</p>
+    ${pc.n<3?'<p class="hint">Trag mindestens 3 Preise ein, sonst ist der Vorschlag wackelig.</p>':''}
+    ${it.min&&pc.vorschlag<it.min?`<p class="hint">Liegt unter deinem Mindestpreis (${eur(it.min)}).</p>`:''}
+    <p><button class="s" data-e="pcuse">${eur(pc.vorschlag)} als Preis übernehmen</button></p>
+    <p class="muted">Faustregel, kein Gesetz. Zustand und Marke zählen mit.</p>`;
+  $('#e-int').innerHTML=(it.interessentAm?`<p>Interessent seit ${fmt(it.interessentAm)} (${ageDays(it.interessentAm)} Tage), ${it.nachgefasst?'nachgefasst':'noch nicht nachgefasst'}.</p>`
+    :'<p class="muted">Hat jemand den Artikel gemerkt oder gefragt? Dann hier eintragen. Nach 2 Tagen erinnert dich die Heute-Liste ans Nachfassen.</p>')
+    +`<p><button class="s" data-e="int">Interessent heute</button>${it.interessentAm&&!it.nachgefasst?' <button class="s" data-e="intok">Nachgefasst</button>':''}</p>`;
+}
+$('#edit').addEventListener('input',e=>{
+  const el=e.target,f=el.dataset.f,it=byId(editId);
+  if(!it||!f||f==='status')return;
+  const v=el.type==='number'?num(el.value):el.value;
+  if(f==='preis'&&(it.status==='idee'||it.status==='foto'))it.start=v;
+  it[f]=v;save();updEdit();renderListe();
+});
+$('#edit').addEventListener('change',e=>{
+  const el=e.target,it=byId(editId);if(!it)return;
+  if(el.id==='e-foto'){fotoLesen(el).then(u=>{if(!u)return;bildSetzen(it.id,u);it.bildAm=Date.now();save();renderEdit();renderAll()});return}
+  if(el.dataset.foto){it.fotos[el.dataset.foto]=el.checked;save();updEdit();renderAll();return}
+  if(el.dataset.f==='status'){if(!setStatus(it,el.value))el.value=it.status;renderEdit();renderAll()}
+});
+$('#edit').addEventListener('click',e=>{
+  const a=e.target.dataset.e,it=byId(editId);if(!a||!it)return;
+  if(a==='close'){closeEdit();return}
+  if(a==='tcopy'){copy(titel(it),$('#e-tmsg'));return}
+  if(a==='bcopy'){copy(beschreibung(it),$('#e-bmsg'));return}
+  if(a==='tname'){const t=titel(it);if(t)it.name=t}
+  if(a==='pcuse'){const pc=preisCheck(parsePreise(it.konk),it.preis);if(pc){it.preis=pc.vorschlag;if(it.status==='idee'||it.status==='foto')it.start=it.preis}}
+  if(a==='int'){it.interessentAm=today();it.nachgefasst=false}
+  if(a==='intok')it.nachgefasst=true;
+  if(a==='bildweg'){bildSetzen(it.id,null);it.bildAm=Date.now()}
+  save();renderEdit();renderAll();
+});
+
+// Angebotstexte
+const TPL=[
+ ['Interessent (hat gemerkt)','Hallo! Du hast dir {artikel} gemerkt. Ich mache dir den Artikel für {angebot} statt {preis}, zuzüglich Versand. Wenn du magst, schick mir gern ein Angebot. Viele Grüße'],
+ ['Gegenangebot','Danke für dein Angebot! Bei {artikel} komme ich dir bis {angebot} entgegen, tiefer geht leider nicht. Passt das für dich?'],
+ ['Bündel','Wenn du noch einen zweiten Artikel aus meinem Profil nimmst, gebe ich dir {rabatt} % Rabatt auf {artikel} und du sparst Porto. Sag einfach Bescheid.'],
+ ['Nachfrage nach 48 Stunden','Hallo! Hast du noch Interesse an {artikel}? Ich halte ihn gern bis morgen für dich zurück.'],
+ ['Danke und Versand','Danke für deinen Kauf! Ich schicke {artikel} in den nächsten 1 bis 2 Tagen ab und melde mich mit der Sendungsnummer.']
+];
+function renderAngebote(){
+  const akt=items.filter(i=>i.status==='eingestellt'),cur=$('#a-item').value;
+  $('#a-item').innerHTML=akt.length?akt.map(i=>`<option value="${esc(i.id)}">${esc(i.name)}</option>`).join(''):'<option value="">Keine eingestellten Artikel</option>';
+  if(cur&&akt.some(i=>String(i.id)===cur))$('#a-item').value=cur;
+  if(!$('#a-tpl').options.length)$('#a-tpl').innerHTML=TPL.map((t,i)=>`<option value="${i}">${esc(t[0])}</option>`).join('');
+  fillText();
+}
+function fillText(){
+  const it=byId($('#a-item').value);
+  if(!it){$('#a-text').value='';$('#a-info').textContent='';return}
+  const rab=Math.min(50,Math.max(0,num($('#a-rab').value)||0)),ang=angebotPreis(it,rab);
+  $('#a-info').textContent=`Preis ${eur(it.preis)}, Mindestpreis ${eur(it.min)}, Angebot ${eur(ang)}`+(it.preis*(1-rab/100)<(it.min||0)?' (Mindestpreis greift)':'');
+  $('#a-text').value=TPL[Number($('#a-tpl').value)||0][1].replaceAll('{artikel}',it.name).replaceAll('{preis}',eur(it.preis)).replaceAll('{angebot}',eur(ang)).replaceAll('{rabatt}',String(rab));
+}
+['a-item','a-tpl','a-rab'].forEach(id=>$('#'+id).addEventListener('input',fillText));
+$('#a-copy').addEventListener('click',()=>copy($('#a-text').value,$('#a-msg')));
+
+// Rechner: Bündel und Saison
+function renderRechner(){
+  const akt=items.filter(i=>i.status==='eingestellt');
+  for(const id of [...bSel])if(!akt.some(i=>String(i.id)===id))bSel.delete(id);
+  $('#b-list').innerHTML=akt.length?akt.map(i=>`<label class="ck"><input type="checkbox" data-b="${esc(i.id)}"${bSel.has(String(i.id))?' checked':''}> ${esc(i.name)} <span class="muted">${eur(i.preis)}, min. ${eur(i.min??i.preis)}</span></label>`).join('')
+    :'<p class="muted">Keine eingestellten Artikel.</p>';
+  calcB();
+  const m=new Date().getMonth();
+  $('#s-tab').innerHTML='<tr><th>Monat</th><th>Läuft gut</th><th>Jetzt einstellen</th></tr>'+SAISON.map((s,i)=>`<tr${i===m?' class="now"':''}><td>${s[0]}</td><td>${esc(s[1])}</td><td>${esc(s[2])}</td></tr>`).join('');
+}
+function calcB(){
+  const list=items.filter(i=>bSel.has(String(i.id)));
+  if(list.length<2){$('#b-out').innerHTML='<p class="muted">Mindestens 2 Artikel wählen.</p>';$('#b-text').value='';return}
+  const rab=Math.min(50,Math.max(0,num($('#b-rab').value)||0)),r=buendel(list,rab);
+  $('#b-out').innerHTML=`<div class="grid">${card('Einzeln',eur(r.summe))+card('Bündelpreis',eur(r.preis))+card('Käufer spart',eur(r.ersparnis))}</div>`
+    +(r.bodenGreift?'<p class="hint">Deine Mindestpreise greifen, deshalb weniger Rabatt.</p>':'');
+  $('#b-text').value=`Hallo! Wenn du ${list.map(i=>i.name).join(', ')} zusammen nimmst, bekommst du alles für ${eur(r.preis)} statt ${eur(r.summe)}. Porto zahlst du nur einmal. Soll ich dir ein Angebot schicken?`;
+}
+$('#b-list').addEventListener('change',e=>{const id=e.target.dataset.b;if(!id)return;e.target.checked?bSel.add(id):bSel.delete(id);calcB()});
+$('#b-rab').addEventListener('input',calcB);
+$('#b-copy').addEventListener('click',()=>copy($('#b-text').value,$('#b-msg')));
+
+// Zahlen
+function stats(list){
+  const n=list.length,um=list.reduce((s,i)=>s+(i.vk||0),0),ge=list.reduce((s,i)=>s+(i.vk||0)-(i.ek||0)-(i.kosten||0),0);
+  const tage=n?list.reduce((s,i)=>s+ageDays(i.datum,i.verkauftAm),0)/n:0;
+  return {n,um,ge,tage};
+}
+function renderZahlen(){
+  const v=items.filter(i=>VERKAUFT.includes(i.status)),m=today().slice(0,7);
+  const f=s=>card('Verkäufe',s.n)+card('Umsatz',eur(s.um))+card('Gewinn',eur(s.ge))+card('Ø Tage bis Verkauf',s.n?s.tage.toFixed(1).replace('.',','):'–');
+  $('#z-monat').innerHTML=f(stats(v.filter(i=>(i.verkauftAm||'').slice(0,7)===m)));
+  const akt=items.filter(i=>i.status==='eingestellt');
+  $('#z-gesamt').innerHTML=f(stats(v))+card('Eingestellt',akt.length)+card('Wert der eingestellten',eur(akt.reduce((s,i)=>s+(i.preis||0),0)));
+  let h='<tr><th>Artikel</th><th>Verkauft am</th><th>Preis</th><th>Gewinn</th><th>Tage</th></tr>';
+  if(!v.length)h+='<tr><td colspan="5" class="muted">Noch nichts verkauft.</td></tr>';
+  for(const i of [...v].sort((a,b)=>(b.verkauftAm||'').localeCompare(a.verkauftAm||'')))
+    h+=`<tr><td>${esc(i.name)} <span class="badge">${SL[i.status]}</span></td><td>${esc(fmt(i.verkauftAm))}</td><td class="num">${eur(i.vk)}</td><td class="num">${eur((i.vk||0)-(i.ek||0)-(i.kosten||0))}</td><td class="num">${ageDays(i.datum,i.verkauftAm)}</td></tr>`;
+  $('#verkauft').innerHTML=h;
+}
+
+// Daten
+const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const istIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const touch=()=>matchMedia('(pointer:coarse)').matches;
+function renderDaten(){
+  $('#d-last').textContent=meta.export?`Zuletzt gesichert am ${fmt(meta.export)}${meta.export.slice(0,4)}.`:'Noch nie gesichert.';
+  $('#exp-share').classList.toggle('hide',!sicherungsDatei());
+  if($('#t-daten').classList.contains('hide'))return;
+  $('#d-size').textContent=`Sicherung ca. ${groesse(new Blob([sicherung()]).size)}, ${items.length} Artikel, ${bilder.size} ${bilder.size===1?'Bild':'Bilder'}.`;
+  const z=(l,v)=>`<p><b>${l}:</b> ${v}</p>`;
+  $('#d-geraet').innerHTML=
+    (location.protocol==='file:'?`<p class="hint">Das ist die Datei-Version. Neue Adresse: ${esc(ADRESSE)}. Umzug: hier herunterladen, dort „Datei zusammenführen“.</p>`:'')
+    +z('App',standalone()?'vom Home-Bildschirm':istIOS()?'im Browser. Für die App: Safari → Teilen → Zum Home-Bildschirm. Danach nur noch über das Symbol öffnen, die App hat einen eigenen Speicher.':'im Browser')
+    +z('Speicher dauerhaft',dauerhaft===true?'ja':dauerhaft===false?'nein, der Browser entscheidet. Deshalb regelmäßig sichern.':'unbekannt')
+    +z('Bilder',db?'auf dem Gerät gespeichert':'nur bis zum Schließen (dieser Browser erlaubt hier keinen Bild-Speicher)')
+    +z('Offline','serviceWorker' in navigator&&navigator.serviceWorker.controller?'bereit':'nicht aktiv')
+    +z('Version',VERSION);
+}
+// Sicherung Version 3: Artikel, Bilder und Lösch-Vermerke
+function sicherung(){return JSON.stringify({version:3,exportiert:new Date().toISOString(),items,geloescht:meta.geloescht,bilder:Object.fromEntries(bilder)})}
+const dateiName=()=>'vinted-helfer-'+today()+'.json';
+// Datei fürs Teilen-Menü, wenn der Browser das kann (iPhone: AirDrop, In Dateien sichern)
+function sicherungsDatei(inhalt){
+  if(!navigator.canShare)return null;
+  for(const type of ['application/json','text/plain']){
+    try{const f=new File([inhalt??'{}'],dateiName(),{type});if(navigator.canShare({files:[f]}))return f}catch(e){}
+  }
+  return null;
+}
+function gesichert(){meta.export=today();save();renderAll()}
+function herunterladen(){
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([sicherung()],{type:'application/json'}));a.download=dateiName();
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);gesichert();
+}
+async function teilen(){
+  const f=sicherungsDatei(sicherung());if(!f)return herunterladen();
+  try{await navigator.share({files:[f],title:'Vinted-Helfer Sicherung'});gesichert()}
+  catch(e){if(e&&e.name!=='AbortError')herunterladen()}
+}
+// Heute-Aufgabe: am Handy Teilen-Menü, am Mac herunterladen
+function sichern(){touch()&&sicherungsDatei()?teilen():herunterladen()}
+$('#exp').addEventListener('click',herunterladen);
+$('#exp-share').addEventListener('click',teilen);
+function importieren(e,modus){
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  const r=new FileReader();r.onload=()=>{
+    let d,list;
+    try{d=JSON.parse(r.result);list=Array.isArray(d)?d:d&&Array.isArray(d.items)?d.items:null;if(!list)throw 0}catch(x){alert('Datei nicht lesbar.');return}
+    const neuBilder=Object.fromEntries(Object.entries((d&&d.bilder)||{}).filter(([,v])=>istBild(v)));
+    const neuDel=d&&d.geloescht&&typeof d.geloescht==='object'?d.geloescht:{};
+    let msg;
+    if(modus==='ersetzen'){
+      if(!confirm('Alle Daten auf diesem Gerät durch '+list.length+' Artikel aus der Datei ersetzen?'))return;
+      items=migrate(list);meta.geloescht={...neuDel};bilder.clear();
+      for(const [k,v] of Object.entries(neuBilder))bilder.set(k,v);
+      msg=`Ersetzt: ${items.length} Artikel.`;
+    }else{
+      const z=zusammenfuehren({items,geloescht:meta.geloescht,bilder:Object.fromEntries(bilder)},{items:migrate(list),geloescht:neuDel,bilder:neuBilder});
+      items=z.items;meta.geloescht=z.geloescht;bilder.clear();
+      for(const [k,v] of Object.entries(z.bilder))bilder.set(k,v);
+      msg=`Zusammengeführt: ${z.neu} neu, ${z.aktualisiert} aktualisiert, ${z.entfernt} entfernt.`;
+    }
+    dbTx(s=>{s.clear();for(const [k,v] of bilder)s.put(v,k)});
+    // importierte Artikel behalten ihren Zeitstempel, sonst gewinnen sie beim nächsten Abgleich zu Unrecht
+    merkeStand();save();closeEdit();renderAll();alert(msg);
+  };r.readAsText(f);
+}
+$('#imp-merge').addEventListener('change',e=>importieren(e,'zusammen'));
+$('#imp-replace').addEventListener('change',e=>importieren(e,'ersetzen'));
+
+function renderAll(){renderHeute();renderListe();renderAngebote();renderRechner();renderZahlen();renderDaten()}
+// Reserve: index.html#link=<geteilter Text> füllt das Formular (z. B. für einen Kurzbefehl).
+// Der Teil hinter # geht an keinen Server, der Helfer ruft den Link nicht ab.
+function ausHash(){
+  const m=location.hash.match(/^#link=(.+)$/);if(!m)return;
+  let raw='';try{raw=decodeURIComponent(m[1])}catch(e){}
+  try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
+  linkUebernehmen(raw);
+}
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('button[data-t]');if(b)go(b.dataset.t)});
+$('#n-datum').value=today();
+load();save();renderAll();ausHash();
+addEventListener('hashchange',ausHash);
+bilderLaden().then(()=>{renderAll();if(editId!=null)renderEdit()});
+// Speicher dauerhaft anfragen und Offline-Speicher anmelden (nur über https oder localhost)
+if(navigator.storage&&navigator.storage.persist)navigator.storage.persisted().then(p=>p||navigator.storage.persist()).then(p=>{dauerhaft=p;renderDaten()}).catch(()=>{});
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('sw.js').then(()=>navigator.serviceWorker.ready).then(renderDaten).catch(()=>{});
+</script>
+</body>
+</html>
