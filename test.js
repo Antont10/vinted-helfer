@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');
 const code=html.split('/* LOGIK-START')[1].split('/* LOGIK-END */')[0].replace(/^[^\n]*\n/,'');
-const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv};')();
+const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv,suchLink,sucheSauber,suchenMischen,deal,ECHT};')();
 let ok=0,fail=0;
 const eq=(name,a,b)=>{const s=JSON.stringify(a)===JSON.stringify(b);s?ok++:fail++;if(!s)console.log('FEHLER',name,'ist',a,'soll',b)};
 // Versandfrist 5 Werktage
@@ -98,4 +98,24 @@ eq('CSV Kopf und BOM',c[0].startsWith('﻿Verkauft am;Artikel;Marke'),true);
 eq('CSV sortiert, Komma, Schutz vor Formeln',c[1],"11.10.2026;'=SUMME(A1);'=SUMME(A1);Sonstiges;Versendet;;;10,50;0,00;12,00;-1,50;;");
 eq('CSV Anführungszeichen',c[2].split(';').slice(0,1).concat(c[2].includes('"Gi; ""Adidas"""')),['12.10.2026',true]);
 eq('CSV Summe',c[3],';Summe (2 Verkäufe);;;;;;26,50;0,00;12,00;14,50;;');
+// Phase 5: Such-Link, Deal-Rechner, Suchen zusammenführen
+eq('Such-Link',L.suchLink({marke:'Venum',typ:'Gi',groesse:'A2',max:30}),'https://www.vinted.de/catalog?search_text=Venum+Gi+A2&order=newest_first&price_to=30&currency=EUR');
+eq('Such-Link ohne Preis',L.suchLink({typ:'Rashguard & Shorts'}),'https://www.vinted.de/catalog?search_text=Rashguard+%26+Shorts&order=newest_first');
+eq('Such-Link leer',L.suchLink({marke:' ',max:20}),null);
+eq('Suche säubern',L.sucheSauber({id:7,marke:' Nike ',typ:'Hoodie',max:'25,5',x:'<b>',geaendert:'5'}),{id:'7',marke:'Nike',typ:'Hoodie',groesse:'',max:25.5,geaendert:5});
+eq('Suche ohne id',L.sucheSauber({marke:'Nike'}),null);
+const d1=L.deal({kauf:20,portoEin:4.5,vk:45,minuten:30});
+eq('Deal Schutz und Kosten',[d1.schutz,d1.kosten,d1.gewinn],[1.7,26.2,18.8]);
+eq('Deal pro Stunde und Ampel',[Math.round(d1.stunde*10)/10,d1.ampel],[37.6,'g']);
+eq('Deal höchstens zahlen',d1.maxKauf,28);
+eq('Deal Mindestgewinn knapp',[L.deal({kauf:28,portoEin:4.5,vk:45}).gewinn>=10,L.deal({kauf:28.5,portoEin:4.5,vk:45}).gewinn>=10],[true,false]);
+eq('Deal gelb unter 10 €',L.deal({kauf:30,vk:40}).ampel,'y');
+eq('Deal gelb unter 10 €/Std.',L.deal({kauf:10,vk:30,minuten:120}).ampel,'y');
+eq('Deal rot',L.deal({kauf:30,portoEin:5,vk:30}).ampel,'r');
+eq('Deal Technik 8 %',L.deal({kauf:50,schutz:8,vk:90}).schutz,4.7);
+eq('Deal nichts möglich',L.deal({vk:5}).maxKauf,0);
+const sm=L.suchenMischen({suchen:[{id:'1',marke:'A',geaendert:5},{id:'2',marke:'B',geaendert:5}],weg:{}},{suchen:[{id:'1',marke:'A neu',geaendert:9},{id:'3',marke:'C',geaendert:1}],weg:{'2':7}});
+eq('Suchen zusammenführen',[sm.suchen.map(s=>s.marke),sm.weg],[['A neu','C'],{'2':7}]);
+eq('Lösch-Vermerk älter als Änderung',L.suchenMischen({suchen:[{id:'1',geaendert:9}],weg:{}},{suchen:[],weg:{'1':3}}).suchen.length,1);
+eq('Checklisten',Object.keys(L.ECHT),['kampfsport','kleidung','sneaker','technik']);
 console.log(`${ok} ok, ${fail} Fehler`);process.exit(fail?1:0);

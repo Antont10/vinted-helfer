@@ -57,7 +57,8 @@ tr.now td{font-weight:600}
 .stat{font-size:22px;font-weight:600}
 .muted{color:var(--mut);font-size:13px}
 .tbl{overflow-x:auto}
-.hide{display:none}
+/* !important, sonst zeigen button.p und button.s versteckte Knöpfe trotzdem an */
+.hide{display:none!important}
 /* Lade-Kreis beim Start, erscheint erst nach 0,3 Sekunden, damit er bei schnellem Start nicht flackert */
 #laden{position:fixed;inset:0;z-index:99;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg);color:var(--mut);font-size:15px;opacity:0;animation:zeigen .2s .3s forwards}
 #laden .kreis{width:46px;height:46px;border-radius:50%;border:5px solid var(--line);border-top-color:var(--acc);animation:dreh .9s linear infinite}
@@ -85,7 +86,9 @@ p{margin:6px 0}
 @media (max-width:700px){
   body{padding:calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(84px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left))}
   #tabs{position:fixed;left:0;right:0;bottom:0;margin:0;z-index:10;background:var(--card);border-top:1px solid var(--line);padding:6px calc(4px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(4px + env(safe-area-inset-left));flex-wrap:nowrap;gap:2px}
-  #tabs button{flex:1;min-width:0;border:0;border-radius:10px;padding:12px 2px;font-size:13px;background:none}
+  /* sieben Tabs: Breite nach Wortlänge, sonst kleben lange Wörter aneinander */
+  #tabs{gap:2px}
+  #tabs button{flex:1 1 auto;min-width:0;border:0;border-radius:10px;padding:12px 3px;font-size:13px;background:none}
   #tabs button.on{background:var(--acc);color:var(--onacc)}
   .lang{display:none}.kurz{display:inline}
   #aktiv tr.kopf,#verkauft tr.kopf{display:none}
@@ -101,6 +104,8 @@ p{margin:6px 0}
   #z-kat .um,#z-marke .um{display:none}
   #z-kat td,#z-kat th,#z-marke td,#z-marke th{padding:8px 4px}
 }
+/* sehr schmale Handys (iPhone SE der 1. Generation) */
+@media (max-width:360px){#tabs button{font-size:11.5px;padding:12px 1px}}
 </style>
 </head>
 <body>
@@ -113,6 +118,7 @@ p{margin:6px 0}
   <button data-t="liste">Artikel</button>
   <button data-t="angebote"><span class="lang">Angebotstexte</span><span class="kurz">Texte</span></button>
   <button data-t="rechner">Rechner</button>
+  <button data-t="einkauf">Einkauf</button>
   <button data-t="zahlen">Zahlen</button>
   <button data-t="daten">Daten</button>
 </div>
@@ -179,6 +185,49 @@ p{margin:6px 0}
     <h2>Saison-Kalender</h2>
     <p class="muted">Faustregeln, nicht belegt. Stell Sachen etwa einen Monat vor ihrer Saison ein.</p>
     <div class="tbl"><table id="s-tab"></table></div>
+  </div>
+</section>
+
+<section id="t-einkauf" class="hide">
+  <div class="card">
+    <h2>Gespeicherte Suchen</h2>
+    <p class="muted">„Suche öffnen“ zeigt die Vinted-Suche mit deinen Angaben, neueste zuerst. Der Helfer ruft dabei nichts ab. Den Alarm macht die Vinted-App: Suche dort öffnen und speichern, dann meldet sie neue Treffer.</p>
+    <div class="grid">
+      <div><label>Marke</label><input id="f-marke" placeholder="Venum" maxlength="60"></div>
+      <div><label>Was</label><input id="f-typ" placeholder="Gi" maxlength="60"></div>
+      <div><label>Größe</label><input id="f-groesse" placeholder="A2" maxlength="60"></div>
+      <div><label>Höchstpreis (€)</label><input id="f-max" type="number" step="0.5" min="0" inputmode="decimal"></div>
+    </div>
+    <p class="btns"><button class="p" id="f-add">Suche speichern</button><button class="s hide" id="f-abbr">Abbrechen</button> <span class="hint" id="f-msg"></span></p>
+    <div id="f-list"></div>
+  </div>
+  <div class="card">
+    <h2>Deal-Rechner</h2>
+    <p class="muted">Lohnt sich der Kauf? Grün ab deinem Mindestgewinn und mindestens 10 € pro Stunde.</p>
+    <div class="grid">
+      <div><label>Was</label><input id="d-name" placeholder="Venum Gi A2" maxlength="80"></div>
+      <div><label>Kaufpreis (€)</label><input id="d-kauf" type="number" step="0.5" min="0" inputmode="decimal"></div>
+      <div><label>Käuferschutz (%)</label><input id="d-schutz" type="number" step="1" min="0" max="20" value="5" inputmode="decimal"></div>
+      <div><label>Porto zu dir (€)</label><input id="d-ein" type="number" step="0.5" min="0" inputmode="decimal"></div>
+      <div><label>Verkauf erwartet (€)</label><input id="d-vk" type="number" step="0.5" min="0" inputmode="decimal"></div>
+      <div><label>Porto beim Verkauf (€)</label><input id="d-aus" type="number" step="0.5" min="0" value="0" inputmode="decimal"></div>
+      <div><label>Zeit gesamt (Min.)</label><input id="d-min" type="number" step="5" min="0" placeholder="30" inputmode="numeric"></div>
+      <div><label>Mindestgewinn (€)</label><input id="d-mg" type="number" step="1" min="0" value="10" inputmode="decimal"></div>
+    </div>
+    <div id="d-out" style="margin-top:8px"></div>
+    <p class="muted">Käuferschutz: 0,70 € plus 5 %, bei Technik eine Quelle zufolge bis 8 %. Die genaue Zahl steht im Bezahlschritt. Auf Vinted zahlt der Käufer das Porto, deshalb ist „Porto beim Verkauf“ meist 0. Den Verkaufspreis lieber vorsichtig schätzen.</p>
+    <p class="btns"><button class="s" id="d-artikel">Gekauft: als Artikel anlegen</button></p>
+  </div>
+  <div class="card">
+    <h2>Echtheits-Check</h2>
+    <p class="muted">Faustregeln, keine Garantie. Bei Zweifeln lieber nicht kaufen.</p>
+    <div class="chips" id="e-kat"></div>
+    <div id="e-list"></div>
+    <p class="btns"><button class="s" id="e-reset">Haken entfernen</button> <span class="muted" id="e-stand"></span></p>
+  </div>
+  <div class="card">
+    <h2>Wichtig beim Zukauf</h2>
+    <p class="muted">Wer gezielt kauft, um weiterzuverkaufen, handelt gewerblich. Das läuft nur über Mamas Firma und mit ihrem Okay. Verkäufe von Zukauf zählen auch im Jahreszähler.</p>
   </div>
 </section>
 
@@ -459,11 +508,57 @@ function heute(items,meta,ref){
     info:`${y}: ${J.n} Verkäufe, ${eur(J.umsatz)}. Ab ${MELDE_N} Verkäufen oder ${eur0(MELDE_EUR)} meldet Vinted ans Finanzamt. Das ist keine Steuerpflicht, aber sprich mit Mama.`});
   return T.sort((a,b)=>a.p-b.p);
 }
+// Phase 5 Fund-Alarm: nur ein Such-Planer. Der Helfer baut Links, öffnen und kaufen tust du selbst.
+const MIN_GEWINN=10,MIN_STUNDE=10,SCHUTZ_FIX=0.7,SCHUTZ_PROZENT=5;
+// Vinted-Suche, neueste zuerst. Marke und Größe stehen im Suchtext, weil Vinteds Filter interne Nummern brauchen.
+function suchLink(s){
+  const text=[s.marke,s.typ,s.groesse].map(x=>String(x??'').trim()).filter(Boolean).join(' ');
+  if(!text)return null;
+  const p=new URLSearchParams({search_text:text,order:'newest_first'});
+  if(s.max>0){p.set('price_to',String(s.max));p.set('currency','EUR')}
+  return 'https://www.vinted.de/catalog?'+p.toString();
+}
+// Gespeicherte Suche aus Eingabe oder Datei: nur bekannte Felder, kurze Texte
+function sucheSauber(s){
+  if(!s||typeof s!=='object'||s.id==null)return null;
+  const t=x=>String(x??'').trim().slice(0,60),max=num(s.max);
+  return {id:String(s.id).slice(0,30),marke:t(s.marke),typ:t(s.typ),groesse:t(s.groesse),max:max>0?max:null,geaendert:Number(s.geaendert)||0};
+}
+// Suchen zusammenführen: je Suche gewinnt die neuere Änderung, ein jüngerer Lösch-Vermerk entfernt sie
+function suchenMischen(a,b){
+  const weg={...(a.weg||{})};
+  for(const [id,t] of Object.entries(b.weg||{}))if(!(weg[id]>=t))weg[id]=t;
+  const M=new Map();
+  for(const s of [...(a.suchen||[]),...(b.suchen||[])]){const x=M.get(s.id);if(!x||s.geaendert>x.geaendert)M.set(s.id,s)}
+  return {suchen:[...M.values()].filter(s=>!(weg[s.id]>=s.geaendert)),weg};
+}
+// Deal-Rechner. Beim Kauf zahlst du Käuferschutz (0,70 € + 5 %, Stand Okt. 2026, im Bezahlschritt prüfen).
+// Beim Verkauf auf Vinted zahlt der Käufer Porto und Schutz, deshalb ist "Porto beim Verkauf" meist 0.
+function deal(d){
+  const kauf=d.kauf>0?d.kauf:0,proz=d.schutz>=0?d.schutz:SCHUTZ_PROZENT,mg=d.minGewinn>=0?d.minGewinn:MIN_GEWINN;
+  const neben=(d.portoEin||0)+(d.portoAus||0);
+  const schutz=kauf?Math.round((SCHUTZ_FIX+kauf*proz/100)*100)/100:0;
+  const kosten=kauf+schutz+neben,gewinn=(d.vk||0)-kosten;
+  const stunde=d.minuten>0?gewinn*60/d.minuten:null;
+  // höchster Kaufpreis (auf 0,50 € abgerundet), mit dem der Mindestgewinn noch klappt
+  const maxKauf=Math.max(0,Math.floor(((d.vk||0)-neben-mg-SCHUTZ_FIX)/(1+proz/100)*2)/2);
+  const ampel=gewinn>=mg&&(stunde==null||stunde>=MIN_STUNDE)?'g':gewinn>0?'y':'r';
+  return {schutz,kosten,gewinn,stunde,maxKauf,ampel};
+}
+// Echtheits-Check je Kategorie. Faustregeln, keine Garantie.
+const ECHT_IMMER=['Nur über Vinted bezahlen, nie per Überweisung oder PayPal „Freunde“ (sonst kein Käuferschutz)','Echte Fotos vom Verkäufer, keine Katalogbilder. Sonst eigene Fotos anfragen','Bewertungen des Verkäufers ansehen: wie viele, wie neu','Viel billiger als üblich? Warnsignal, lieber nachfragen'];
+const ECHT={
+ kampfsport:['Kampfsport',['Marken- und Größen-Etikett (A0 bis A4) fotografiert','BJJ-Gi oder Judo-Gi? Judo-Gis haben dickeren Kragen und anderen Schnitt','Logos und Patches sauber gestickt, nicht nur gedruckt','Stoff passt zur Marke (zum Beispiel Pearl Weave), nicht dünn','Jacke und Hose aus einem Set: gleiche Marke und Farbe','Kragen, Knie und Achseln ohne Risse, keine Flecken, kein Geruch','Rashguard: Druck nicht rissig, Nähte flach']],
+ kleidung:['Kleidung',['Marken- und Pflegeetikett vollständig, Schrift sauber und gerade','Nähte gerade und dicht, keine losen Fäden am Logo','Knöpfe und Reißverschluss mit Markenprägung','Material passt zum Etikett (Nahfoto anfragen)','Gleiches Teil auf der Marken-Seite vergleichen: Farbe, Schnitt, Logo-Lage']],
+ sneaker:['Sneaker',['Style-Code im Schuh passt zum Karton-Etikett und zum Modell','Größe auf Innen-Etikett und Karton gleich','Nähte und Klebekanten sauber, kein starker Klebergeruch','Sohle abgenutzt wie beschrieben','Form und Farben mit Originalbildern vergleichen','Beliebte Modelle (Jordan, Dunk) besonders genau prüfen']],
+ technik:['Technik',['Seriennummer anfragen und beim Hersteller prüfen (Apple: checkcoverage.apple.com)','Video: Gerät eingeschaltet und funktioniert','Apple-Geräte: „Wo ist?“ und Aktivierungssperre aus','Akku-Zustand als Foto, wenn möglich','Original-Zubehör und Rechnung, wenn vorhanden','Gewicht und Verarbeitung: Fälschungen wirken oft leicht und billig','Käuferschutz kann bei Technik höher sein (bis 8 %), im Bezahlschritt prüfen']]
+};
+const ECHT_NACH=['Paket beim Öffnen filmen','Sofort prüfen und Probleme in Vinted melden, bevor du bestätigst (Frist laut Vinted 2 Tage, in der App prüfen)'];
 /* LOGIK-END */
 
-const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='4.2 vom 15.10.2026',BILD_PX=160;
+const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='5.0 vom 15.10.2026',BILD_PX=160;
 const ADRESSE='https://antont10.github.io/vinted-helfer/';
-const TABS=['heute','liste','angebote','rechner','zahlen','daten'];
+const TABS=['heute','liste','angebote','rechner','einkauf','zahlen','daten'];
 let items=[],meta={},editId=null,filt='offen',relistId=null,relistWarn=false,stand=new Map(),nBild=null,db=null,dauerhaft=null;
 const bSel=new Set(),bilder=new Map();
 // Stand jedes Artikels ohne Zeitstempel, damit save() Änderungen erkennt
@@ -473,6 +568,8 @@ function load(){
   try{items=migrate(JSON.parse(localStorage.getItem(KEY)))}catch(e){items=[]}
   try{meta=JSON.parse(localStorage.getItem(MKEY))||{}}catch(e){meta={}}
   if(!meta.geloescht||typeof meta.geloescht!=='object')meta.geloescht={};
+  meta.suchen=Array.isArray(meta.suchen)?meta.suchen.map(sucheSauber).filter(Boolean):[];
+  if(!meta.suchenWeg||typeof meta.suchenWeg!=='object')meta.suchenWeg={};
   merkeStand();
 }
 // Geänderte Artikel bekommen einen Zeitstempel, den braucht das Zusammenführen
@@ -809,6 +906,72 @@ $('#b-list').addEventListener('change',e=>{const id=e.target.dataset.b;if(!id)re
 $('#b-rab').addEventListener('input',calcB);
 $('#b-copy').addEventListener('click',()=>copy($('#b-text').value,$('#b-msg')));
 
+// Einkauf: gespeicherte Suchen, Deal-Rechner, Echtheits-Check
+let sucheEdit=null,echtKat='kampfsport';
+const echtHaken=new Set();
+function renderEinkauf(){
+  const S=meta.suchen;
+  $('#f-list').innerHTML=S.length?S.map(s=>{const l=suchLink(s);return `<div class="task"><div><div class="tt">${esc([s.marke,s.typ,s.groesse].filter(Boolean).join(' '))}</div><div class="muted">${s.max?'bis '+eur(s.max):'ohne Höchstpreis'}</div></div>
+    <div class="acts">${l?`<a class="s" href="${esc(l)}" target="_blank" rel="noopener noreferrer">Suche öffnen ↗</a>`:''}<button class="s" data-fs="edit" data-id="${esc(s.id)}">Ändern</button><button class="s warn" data-fs="del" data-id="${esc(s.id)}">Löschen</button></div></div>`}).join('')
+    :'<p class="muted">Noch keine Suche gespeichert.</p>';
+  $('#e-kat').innerHTML=Object.entries(ECHT).map(([k,[l]])=>`<button data-k="${k}"${k===echtKat?' class="on"':''}>${l}</button>`).join('');
+  const liste=(titel,arr,p)=>`<h3>${esc(titel)}</h3>`+arr.map((t,i)=>`<label class="ck"><input type="checkbox" data-e="${p+i}"${echtHaken.has(p+i)?' checked':''}> ${esc(t)}</label>`).join('');
+  $('#e-list').innerHTML=liste('Vor dem Kauf',ECHT_IMMER,'i')+liste(ECHT[echtKat][0],ECHT[echtKat][1],echtKat)+liste('Nach Erhalt',ECHT_NACH,'n');
+  echtStand();calcD();
+}
+function echtStand(){
+  const alle=[...document.querySelectorAll('#e-list input[data-e]')];
+  $('#e-stand').textContent=`${alle.filter(x=>x.checked).length} von ${alle.length} geprüft`;
+}
+function sucheFormular(s){
+  sucheEdit=s?s.id:null;
+  $('#f-marke').value=s?s.marke:'';$('#f-typ').value=s?s.typ:'';$('#f-groesse').value=s?s.groesse:'';$('#f-max').value=s&&s.max?s.max:'';
+  $('#f-add').textContent=s?'Änderung speichern':'Suche speichern';$('#f-abbr').classList.toggle('hide',!s);
+}
+$('#f-add').addEventListener('click',()=>{
+  const s=sucheSauber({id:sucheEdit??String(Date.now()),marke:$('#f-marke').value,typ:$('#f-typ').value,groesse:$('#f-groesse').value,max:$('#f-max').value,geaendert:Date.now()});
+  if(!suchLink(s)){$('#f-msg').textContent='Bitte Marke oder „Was“ eintragen.';return}
+  const i=meta.suchen.findIndex(x=>x.id===s.id);i>=0?meta.suchen[i]=s:meta.suchen.push(s);
+  sucheFormular(null);save();renderEinkauf();$('#f-msg').textContent='Gespeichert.';
+});
+$('#f-abbr').addEventListener('click',()=>{sucheFormular(null);$('#f-msg').textContent=''});
+$('#f-list').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-fs]');if(!b)return;
+  const s=meta.suchen.find(x=>x.id===b.dataset.id);if(!s)return;
+  if(b.dataset.fs==='edit'){sucheFormular(s);$('#f-msg').textContent='';$('#f-marke').focus();return}
+  if(!confirm('Suche löschen?'))return;
+  meta.suchen=meta.suchen.filter(x=>x!==s);meta.suchenWeg[s.id]=Date.now();
+  if(sucheEdit===s.id)sucheFormular(null);
+  save();renderEinkauf();
+});
+function dealWerte(){
+  const v=id=>num($(id).value);
+  return {kauf:v('#d-kauf'),schutz:v('#d-schutz'),portoEin:v('#d-ein'),portoAus:v('#d-aus'),vk:v('#d-vk'),minuten:v('#d-min'),minGewinn:v('#d-mg')};
+}
+function calcD(){
+  const w=dealWerte();
+  if(!(w.kauf>0&&w.vk>0)){$('#d-out').innerHTML='<p class="muted">Kaufpreis und erwarteten Verkaufspreis eintragen.</p>';return}
+  const r=deal(w),mg=w.minGewinn>=0?w.minGewinn:MIN_GEWINN;
+  const grund=r.ampel==='g'?'':r.gewinn<=0?'Kein Gewinn.':r.gewinn<mg?`Weniger als ${eur(mg)} Gewinn.`:`Unter ${eur0(MIN_STUNDE)} pro Stunde.`;
+  $('#d-out').innerHTML=`<p style="font-size:17px;font-weight:600"><span class="dot ${r.ampel}"></span>${{g:'Kaufen',y:'Nur wenn du dir sicher bist',r:'Lassen'}[r.ampel]}</p>`
+    +(grund?`<p class="hint">${grund}</p>`:'')
+    +`<div class="grid">${card('Kosten',eur(r.kosten))+card('Gewinn',eur(r.gewinn))+card('Pro Stunde',r.stunde==null?'–':eur0(r.stunde))}</div>`
+    +`<p class="muted">Darin Käuferschutz ${eur(r.schutz)}. Für ${eur(mg)} Gewinn höchstens ${eur(r.maxKauf)} zahlen.</p>`;
+}
+$('#t-einkauf').addEventListener('input',e=>{if(/^d-/.test(e.target.id||''))calcD()});
+// Nach dem Kauf: Formular „Neuer Artikel“ vorausfüllen, du prüfst und tippst selbst auf Hinzufügen
+$('#d-artikel').addEventListener('click',()=>{
+  const w=dealWerte(),name=$('#d-name').value.trim();
+  if(!name||!(w.kauf>0)){alert('Bitte eintragen, was du gekauft hast und den Kaufpreis.');return}
+  const r=deal(w),ek=Math.round((r.kosten-(w.portoAus||0))*100)/100;
+  go('liste');
+  $('#n-name').value=name;$('#n-status').value='idee';$('#n-ek').value=ek;$('#n-preis').value=w.vk>0?w.vk:'';$('#n-link').value='';
+  $('#n-msg').textContent=`Aus dem Deal-Rechner: Einkauf ${eur(ek)} mit Käuferschutz und Porto. Prüfen und „Hinzufügen“ tippen.`;
+});
+$('#e-kat').addEventListener('click',e=>{const b=e.target.closest('button[data-k]');if(b){echtKat=b.dataset.k;renderEinkauf()}});
+$('#e-list').addEventListener('change',e=>{const k=e.target.dataset.e;if(!k)return;e.target.checked?echtHaken.add(k):echtHaken.delete(k);echtStand()});
+$('#e-reset').addEventListener('click',()=>{echtHaken.clear();renderEinkauf()});
+
 // Zahlen
 function stats(list){
   const n=list.length,um=list.reduce((s,i)=>s+(i.vk||0),0),ge=list.reduce((s,i)=>s+gewinn(i),0);
@@ -891,8 +1054,8 @@ function renderDaten(){
     +z('Offline','serviceWorker' in navigator&&navigator.serviceWorker.controller?'bereit':'nicht aktiv')
     +z('Version',VERSION);
 }
-// Sicherung Version 3: Artikel, Bilder und Lösch-Vermerke
-function sicherung(){return JSON.stringify({version:3,exportiert:new Date().toISOString(),items,geloescht:meta.geloescht,bilder:Object.fromEntries(bilder)})}
+// Sicherung Version 4: Artikel, Bilder, Lösch-Vermerke und gespeicherte Suchen
+function sicherung(){return JSON.stringify({version:4,exportiert:new Date().toISOString(),items,geloescht:meta.geloescht,bilder:Object.fromEntries(bilder),suchen:meta.suchen,suchenWeg:meta.suchenWeg})}
 const dateiName=()=>'vinted-helfer-'+today()+'.json';
 // Datei fürs Teilen-Menü, wenn der Browser das kann (iPhone: AirDrop, In Dateien sichern)
 function sicherungsDatei(inhalt){
@@ -923,18 +1086,23 @@ function importieren(e,modus){
     try{d=JSON.parse(r.result);list=Array.isArray(d)?d:d&&Array.isArray(d.items)?d.items:null;if(!list)throw 0}catch(x){alert('Datei nicht lesbar.');return}
     const neuBilder=Object.fromEntries(Object.entries((d&&d.bilder)||{}).filter(([,v])=>istBild(v)));
     const neuDel=d&&d.geloescht&&typeof d.geloescht==='object'?d.geloescht:{};
+    const neuSuchen=Array.isArray(d&&d.suchen)?d.suchen.map(sucheSauber).filter(Boolean):[];
+    const neuWeg=Object.fromEntries(Object.entries((d&&d.suchenWeg)||{}).filter(([,v])=>typeof v==='number'));
     let msg;
     if(modus==='ersetzen'){
       if(!confirm('Alle Daten auf diesem Gerät durch '+list.length+' Artikel aus der Datei ersetzen?'))return;
       items=migrate(list);meta.geloescht={...neuDel};bilder.clear();
+      meta.suchen=neuSuchen;meta.suchenWeg=neuWeg;
       for(const [k,v] of Object.entries(neuBilder))bilder.set(k,v);
       msg=`Ersetzt: ${items.length} Artikel.`;
     }else{
       const z=zusammenfuehren({items,geloescht:meta.geloescht,bilder:Object.fromEntries(bilder)},{items:migrate(list),geloescht:neuDel,bilder:neuBilder});
       items=z.items;meta.geloescht=z.geloescht;bilder.clear();
+      const zs=suchenMischen({suchen:meta.suchen,weg:meta.suchenWeg},{suchen:neuSuchen,weg:neuWeg});meta.suchen=zs.suchen;meta.suchenWeg=zs.weg;
       for(const [k,v] of Object.entries(z.bilder))bilder.set(k,v);
       msg=`Zusammengeführt: ${z.neu} neu, ${z.aktualisiert} aktualisiert, ${z.entfernt} entfernt.`;
     }
+    msg+=` Gespeicherte Suchen: ${meta.suchen.length}.`;
     dbTx(s=>{s.clear();for(const [k,v] of bilder)s.put(v,k)});
     // importierte Artikel behalten ihren Zeitstempel, sonst gewinnen sie beim nächsten Abgleich zu Unrecht
     merkeStand();save();closeEdit();renderAll();alert(msg);
@@ -943,7 +1111,7 @@ function importieren(e,modus){
 $('#imp-merge').addEventListener('change',e=>importieren(e,'zusammen'));
 $('#imp-replace').addEventListener('change',e=>importieren(e,'ersetzen'));
 
-function renderAll(){renderHeute();renderListe();renderAngebote();renderRechner();renderZahlen();renderDaten()}
+function renderAll(){renderHeute();renderListe();renderAngebote();renderRechner();renderEinkauf();renderZahlen();renderDaten()}
 // Reserve: index.html#link=<geteilter Text> füllt das Formular (z. B. für einen Kurzbefehl).
 // Der Teil hinter # geht an keinen Server, der Helfer ruft den Link nicht ab.
 function ausHash(){
