@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');
 const code=html.split('/* LOGIK-START')[1].split('/* LOGIK-END */')[0].replace(/^[^\n]*\n/,'');
-const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv,suchLink,suchLinkSauber,sucheName,sucheSauber,suchenMischen,deal,ECHT,kiOrtOk,kiStandSauber,kiZaehler,kiAntwort,kiBeschreibung,kiTitelChecks,beschrText,BESCHR_ENDE,KI_LIMIT};')();
+const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv,suchLink,suchLinkSauber,sucheName,sucheSauber,suchenMischen,deal,kaufUrteil,kaufNachricht,angebotText,angebotSauber,kaufListe,kaufTipp,kiKaufAntwort,kiMitte,ECHT,kiOrtOk,kiStandSauber,kiZaehler,kiAntwort,kiBeschreibung,kiTitelChecks,beschrText,BESCHR_ENDE,KI_LIMIT};')();
 let ok=0,fail=0;
 const eq=(name,a,b)=>{const s=JSON.stringify(a)===JSON.stringify(b);s?ok++:fail++;if(!s)console.log('FEHLER',name,'ist',a,'soll',b)};
 // Versandfrist 5 Werktage
@@ -131,6 +131,36 @@ const sm=L.suchenMischen({suchen:[{id:'1',marke:'A',geaendert:5},{id:'2',marke:'
 eq('Suchen zusammenführen',[sm.suchen.map(s=>s.marke),sm.weg],[['A neu','C'],{'2':7}]);
 eq('Lösch-Vermerk älter als Änderung',L.suchenMischen({suchen:[{id:'1',geaendert:9}],weg:{}},{suchen:[],weg:{'1':3}}).suchen.length,1);
 eq('Checklisten',Object.keys(L.ECHT),['kampfsport','kleidung','sneaker','technik']);
+// Phase 7: Kauf-Empfehlung (kaufen, handeln, lassen), Merkliste, KI-Kauf-Check
+const k1=L.kaufUrteil({kauf:30,portoEin:6,vk:55,minuten:45});
+eq('Urteil kaufen',[k1.urteil,k1.angebot,k1.max],['kaufen',27,36]);
+const k2=L.kaufUrteil({kauf:30,portoEin:6,vk:45,minuten:45});
+eq('Urteil handeln',[k2.urteil,k2.angebot,k2.max],['handeln',23,26.5]);
+eq('Urteil lassen',L.kaufUrteil({kauf:40,portoEin:6,vk:45}).urteil,'lassen');
+const k4=L.kaufUrteil({kauf:20,portoEin:6,vk:45,minuten:120});
+eq('Höchstpreis hält 10 € pro Stunde ein',[k4.urteil,k4.max,k4.angebot],['handeln',17,15]);
+eq('Urteil ohne Verkaufspreis',L.kaufUrteil({kauf:20}).urteil,null);
+eq('Leeres Feld zählt als Standard',[L.deal({kauf:20,schutz:null,vk:40}).schutz,L.deal({kauf:20,vk:40,minGewinn:null}).maxKauf],[1.7,27.5]);
+eq('Nachricht Gegenangebot',L.kaufNachricht(' Venum  Gi A2 ',23),'Hallo! Ich interessiere mich für „Venum Gi A2“. Wäre 23 € für dich okay? Dann kaufe ich direkt. Viele Grüße');
+eq('Nachricht ohne Name, mit Cent',L.kaufNachricht('',22.5),'Hallo! Ich interessiere mich für deinen Artikel. Wäre 22,50 € für dich okay? Dann kaufe ich direkt. Viele Grüße');
+eq('Angebotstext ohne Kontaktdaten',L.angebotText('Kaum getragen. Fragen an lisa.m@web.de oder 0176 1234 5678, mehr auf https://insta.com/x\r\n'),'Kaum getragen. Fragen an [E-Mail] oder [Nummer], mehr auf [Link]');
+eq('Angebotstext lässt Maße stehen',L.angebotText('Länge 72 cm, Breite 55 cm, Größe A2, Gr. 152 164'),'Länge 72 cm, Breite 55 cm, Größe A2, Gr. 152 164');
+eq('Angebot säubern',L.angebotSauber({id:5,was:'  Venum   Gi ',link:'https://www.vinted.de/items/123-venum-gi?ref=x',kauf:'30',vk:55,schutz:'',minuten:'45',x:1,geaendert:'7'}),
+  {id:'5',was:'Venum Gi',link:'https://www.vinted.de/items/123-venum-gi',kauf:30,schutz:null,portoEin:null,portoAus:null,vk:55,minuten:45,minGewinn:null,kiVon:null,kiBis:null,kiText:'',geaendert:7});
+eq('Angebot ohne Namen',L.angebotSauber({id:1,was:' '}),null);
+const as=L.angebotSauber({id:1,was:'x',link:'https://evil.com/items/1',kauf:-5});
+eq('Angebot fremder Link, negativer Preis',[as.link,as.kauf],['',null]);
+const kl=L.kaufListe([{id:'a',was:'Lassen',kauf:40,portoEin:6,vk:45},{id:'b',was:'Handeln',kauf:30,portoEin:6,vk:45,minuten:45},{id:'c',was:'Kaufen klein',kauf:30,portoEin:6,vk:50,minuten:45},{id:'d',was:'Kaufen groß',kauf:30,portoEin:6,vk:55,minuten:45}]);
+eq('Merkliste sortiert',kl.map(x=>x.a.was),['Kaufen groß','Kaufen klein','Handeln','Lassen']);
+eq('Merkliste rechnet Handeln mit dem Angebot',[kl[2].preis,Math.round(kl[2].gewinn*100)/100],[23,14.15]);
+const tp=L.kaufTipp([{id:1,name:'Nike Hoodie grau',status:'verkauft',vk:30,datum:'2026-10-08',verkauftAm:'2026-10-12'},{id:2,name:'Ralph Lauren Sweatshirt',status:'versendet',vk:55,datum:'2026-10-10',verkauftAm:'2026-10-11'},{id:3,name:'Uniqlo Jacke',status:'eingestellt',preis:20,datum:'2026-10-10'}]);
+eq('Tipp aus deinen Verkäufen',[tp.schnell.k,tp.marke.k],['Pullover/Sweatshirt','Ralph Lauren']);
+eq('Tipp ohne Verkäufe',L.kaufTipp([]),{schnell:null,marke:null});
+eq('KI-Kauf-Antwort säubern',L.kiKaufAntwort({marke:' Venum ',verkauf_von:60,verkauf_bis:'45',nachfrage:'hoch',einschaetzung:'Gute Marke.\nLohnt sich.',echtheit:['Patch gestickt','',5],fragen:['a','b','c','d'],risiken:[]}),
+  {marke:'Venum',artikel:'',von:45,bis:60,nachfrage:'hoch',einschaetzung:'Gute Marke. Lohnt sich.',echtheit:['Patch gestickt'],fragen:['a','b','c'],risiken:[],stand:null});
+eq('KI-Kauf-Antwort nur ein Preis',[L.kiKaufAntwort({verkauf_bis:50}).von,L.kiKaufAntwort({verkauf_von:50,nachfrage:'egal'}).nachfrage],[50,'']);
+eq('KI-Kauf-Antwort leer',[L.kiKaufAntwort({einschaetzung:''}),L.kiKaufAntwort('x')],[null,null]);
+eq('Mitte der Schätzung',[L.kiMitte({von:45,bis:60}),L.kiMitte({von:0,bis:0})],[52.5,null]);
 // Phase 6: KI-Vorschlag
 eq('KI erlaubte Adressen',['https://antont10.github.io','http://localhost:8765','http://127.0.0.1:8766','https://evil.com','null','http://antont10.github.io','https://antont10.github.io.evil.com'].map(L.kiOrtOk),[true,true,true,false,false,false,false]);
 eq('KI Zähler aktueller Monat',L.kiZaehler({monat:'2026-10',n:7,limit:50},'2026-10-15'),{monat:'2026-10',n:7,limit:50,rest:43,bekannt:true});

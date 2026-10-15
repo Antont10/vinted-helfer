@@ -20,7 +20,10 @@ except Exception:
     pass
 json.dump({'args': sys.argv[1:], 'env': dict(os.environ), 'in': inp, 'cwd': os.getcwd(), 'aufrufe': n + 1}, open(os.path.join(d, 'log.json'), 'w'))
 OK = '{"titel":"Nike Hoodie grau Gr. M","beschreibung":"Nike Hoodie in Grau, Größe M.\\\\nSehr gut erhalten.","fehlt":["Mängel prüfen"]}'
-if modus == 'ok':
+KAUF = '{"marke":"Venum","artikel":"Contender Gi","verkauf_von":45,"verkauf_bis":60,"nachfrage":"mittel","einschaetzung":"Gefragte Marke, der Preis passt.","echtheit":["Patch gestickt"],"fragen":["Maße?"],"risiken":["Größe unklar"]}'
+if modus == 'kauf':
+    print(json.dumps({'type': 'result', 'is_error': False, 'result': KAUF}))
+elif modus == 'ok':
     print(json.dumps({'type': 'system'}))
     print(json.dumps({'type': 'result', 'is_error': False, 'result': OK}))
 elif modus == 'struktur':
@@ -113,6 +116,9 @@ class Basis(unittest.TestCase):
     def frage(self, **kw):
         return self.req('POST', '/vorschlag', {'name': 'Nike Hoodie grau M', 'bild': PNG}, **kw)
 
+    def kauf(self, body=None, **kw):
+        return self.req('POST', '/kaufcheck', body or {'name': 'Venum Gi A2', 'preis': 30, 'text': 'Kaum getragen.', 'bild': PNG}, **kw)
+
 
 class Sicherheit(Basis):
     def test_seite_hat_schluessel_und_kein_cors(self):
@@ -137,6 +143,8 @@ class Sicherheit(Basis):
         self.assertEqual(self.frage(origin='https://evil.example')[0], 403)
         self.assertEqual(self.frage(origin=None)[0], 403)
         self.assertEqual(self.frage(origin='https://antont10.github.io')[0], 403)  # der Helfer fragt nie direkt
+        self.assertEqual(self.kauf(origin='https://evil.example')[0], 403)
+        self.assertEqual(self.kauf(token='falsch')[0], 403)
         self.assertEqual(self.aufrufe(), 0)
 
     def test_ohne_oder_mit_falschem_schluessel(self):
@@ -226,6 +234,56 @@ class Aufruf(Basis):
         self.assertEqual(st, 500)
         self.assertIn('nicht gefunden', d['fehler'])
         self.assertEqual(d['stand']['n'], 0)
+
+
+class KaufCheck(Basis):
+    def test_kaufcheck_mit_sonnet_preis_und_text(self):
+        self.modus('kauf')
+        st, d, _ = self.kauf({'name': 'Venum Gi A2', 'preis': 30, 'text': 'Kaum getragen. Fragen an lisa@web.de oder 0176 1234 5678', 'bild': PNG})
+        self.assertEqual(st, 200, d)
+        self.assertEqual((d['verkauf_von'], d['verkauf_bis'], d['marke']), (45, 60, 'Venum'))
+        self.assertEqual(d['stand']['n'], 1)
+        a = self.log()['args']
+        self.assertEqual(a[a.index('--model') + 1], 'claude-sonnet-5-5')
+        self.assertEqual(a[a.index('--effort') + 1], 'low')
+        self.assertIn('Wiederverkäufer', a[a.index('--system-prompt') + 1])
+        self.assertEqual(a[a.index('--tools') + 1], '')
+        teile = json.loads(self.log()['in'].strip())['message']['content']
+        self.assertEqual([x['type'] for x in teile], ['image', 'text'])
+        self.assertIn('Preis: 30,00 €', teile[1]['text'])
+        self.assertIn('Kaum getragen.', teile[1]['text'])
+        self.assertNotIn('lisa@web.de', teile[1]['text'])  # keine Kontaktdaten an die KI
+        self.assertNotIn('1234', teile[1]['text'])
+
+    def test_vorschlag_bleibt_haiku_und_zaehler_gemeinsam(self):
+        self.modus('kauf')
+        self.kauf()
+        self.modus('ok')
+        st, d, _ = self.frage()
+        self.assertEqual(st, 200)
+        a = self.log()['args']
+        self.assertEqual(a[a.index('--model') + 1], 'claude-haiku-5-5')
+        self.assertNotIn('Wiederverkäufer', a[a.index('--system-prompt') + 1])
+        self.assertEqual(d['stand']['n'], 2)
+
+    def test_falsche_antwort_zaehlt(self):
+        self.modus('ok')  # liefert Titel und Text statt Kauf-Check
+        st, d, _ = self.kauf()
+        self.assertEqual(st, 502)
+        self.assertEqual(d['stand']['n'], 1)
+
+    def test_ungueltige_kauf_eingaben(self):
+        for body in ({'name': 'Gi', 'text': ''}, {'name': 'Gi', 'preis': 0}, {'name': 'Gi', 'preis': -3}, {'name': 'Gi', 'preis': True},
+                     {'name': 'Gi', 'preis': '30'}, {'name': 'Gi', 'preis': 30, 'text': 5}, {'name': 'Gi', 'preis': 30, 'text': 'x' * 7000},
+                     {'name': '', 'preis': 30}, {'name': 'Gi', 'preis': 30, 'bild': 'javascript:alert(1)'}):
+            self.assertEqual(self.kauf(body)[0], 400, body)
+        self.assertEqual(self.aufrufe(), 0)
+
+    def test_seite_kennt_kaufcheck(self):
+        st, txt, _ = self.req('GET', '/ki')
+        self.assertIn('"v": 2', txt)
+        self.assertIn('claude-sonnet-5-5', txt)
+        self.assertIn('/kaufcheck', txt)
 
 
 class Eingaben(Basis):
@@ -327,6 +385,21 @@ class Hilfen(unittest.TestCase):
         self.assertIsNone(P.bereinigen({'titel': 'Größe unbekannt', 'beschreibung': 'Text'}))
         self.assertIsNone(P.bereinigen({'titel': 'Hoodie', 'beschreibung': 'Zustand bitte ergänzen.'}))
 
+    def test_bereinigen_kauf(self):
+        b = P.bereinigen_kauf({'marke': ' Venum\n', 'verkauf_von': 60, 'verkauf_bis': 45, 'nachfrage': 'sehr hoch', 'einschaetzung': 'Lohnt\x07 sich.',
+                               'echtheit': ['a', '', 3, 'b', 'c', 'd', 'e'], 'fragen': 'kein Array', 'risiken': ['x' * 99]})
+        self.assertEqual((b['marke'], b['verkauf_von'], b['verkauf_bis'], b['nachfrage'], b['einschaetzung']), ('Venum', 45, 60, '', 'Lohnt sich.'))
+        self.assertEqual((b['echtheit'], b['fragen'], len(b['risiken'][0])), (['a', 'b', 'c', 'd'], [], 60))
+        self.assertEqual(P.bereinigen_kauf({'verkauf_von': '50', 'verkauf_bis': True, 'einschaetzung': 'x'})['verkauf_bis'], 0)
+        self.assertEqual(P.bereinigen_kauf({'verkauf_bis': 50})['verkauf_von'], 50)
+        self.assertIsNone(P.bereinigen_kauf({'titel': 'Nike', 'beschreibung': 'Text'}))
+        self.assertIsNone(P.bereinigen_kauf([]))
+
+    def test_text_sauber(self):
+        self.assertEqual(P.text_sauber('Mail: a.b@web.de, Tel. +49 176 1234567, https://x.de/y\r\n'), 'Mail: [E-Mail], Tel. [Nummer], [Link]')
+        self.assertEqual(P.text_sauber('Länge 72 cm, Gr. 152 164'), 'Länge 72 cm, Gr. 152 164')
+        self.assertEqual(len(P.text_sauber('x' * 5000)), P.MAX_TEXT)
+
     def test_json_aus_text(self):
         self.assertEqual(P.json_aus_text('Hier: {"a": 1} Ende'), {'a': 1})
         self.assertEqual(P.json_aus_text('{"a": 1}'), {'a': 1})
@@ -356,14 +429,16 @@ class Hilfen(unittest.TestCase):
 
     def test_standard_ist_haiku_und_100(self):
         self.assertEqual((P.KONFIG['modell'], P.KONFIG['limit']), ('claude-haiku-5-5', 100))
+        self.assertEqual(P.KONFIG['modell_kauf'], 'claude-sonnet-5-5')
 
     def test_umgebungsvariablen_schalten_modell_um(self):
         os.environ['VINTED_KI_MODELL'], os.environ['VINTED_KI_LIMIT'] = 'claude-sonnet-5-5', '50'
+        os.environ['VINTED_KI_MODELL_KAUF'] = 'claude-haiku-5-5'
         try:
             k = P.konfig()
         finally:
-            del os.environ['VINTED_KI_MODELL'], os.environ['VINTED_KI_LIMIT']
-        self.assertEqual((k['modell'], k['limit']), ('claude-sonnet-5-5', 50))
+            del os.environ['VINTED_KI_MODELL'], os.environ['VINTED_KI_LIMIT'], os.environ['VINTED_KI_MODELL_KAUF']
+        self.assertEqual((k['modell'], k['limit'], k['modell_kauf']), ('claude-sonnet-5-5', 50, 'claude-haiku-5-5'))
 
     def test_origins_passen_zu_index_html(self):
         html = open(os.path.join(HIER, 'index.html'), encoding='utf-8').read()
