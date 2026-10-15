@@ -561,7 +561,7 @@ const ECHT_NACH=['Paket beim Öffnen filmen','Sofort prüfen und Probleme in Vin
 // darum öffnet der Helfer ein kleines Fenster des Proxys und schickt Frage und Antwort per postMessage.
 const KI_ORIGIN='http://127.0.0.1:8787';
 const KI_ORIGINS=['https://antont10.github.io','http://localhost:8765','http://127.0.0.1:8765','http://localhost:8766','http://127.0.0.1:8766'];
-const KI_LIMIT=100,KI_FOTO_PX=1024;
+const KI_LIMIT=100,KI_FOTO_PX=1536;
 const BESCHR_ENDE='Versand innerhalb von 1 bis 2 Tagen. Schau gern in meine anderen Artikel, bei mehreren Teilen gibt es Rabatt.';
 const kiOrtOk=o=>KI_ORIGINS.includes(o);
 // Zählerstand vom Proxy ({monat,n,limit}) prüfen. Maßgeblich ist der Proxy, die Seite zeigt nur den letzten Stand.
@@ -634,7 +634,7 @@ function skaliert(img,px,q){
   const g=c.getContext('2d');g.imageSmoothingQuality='high';g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);
   return c.toDataURL('image/jpeg',q);
 }
-// klein: 160 px lange Seite, JPEG, ca. 5 bis 10 KB (wird gespeichert). gross: 1024 px nur für die KI, bleibt im Arbeitsspeicher.
+// klein: 160 px lange Seite, JPEG, ca. 5 bis 10 KB (wird gespeichert). gross: 1536 px nur für die KI (kleine Etiketten mit der Größe sind bei 1024 px oft nicht lesbar), bleibt im Arbeitsspeicher.
 async function verkleinern(file){
   const url=URL.createObjectURL(file);
   try{

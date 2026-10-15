@@ -320,6 +320,13 @@ class Hilfen(unittest.TestCase):
         self.assertIsNone(P.bereinigen('text'))
         self.assertEqual(len(P.bereinigen({'titel': 'a' * 300, 'beschreibung': 'b' * 5000})['titel']), 80)
 
+    def test_bereinigen_entfernt_platzhalter_und_zustandsaussagen(self):
+        b = P.bereinigen({'titel': 'Polo Ralph Lauren Sweatshirt grau, Gr. unbekannt', 'beschreibung': 'Polo Ralph Lauren Sweatshirt in Grau.\nIm Foto sieht man den Schnitt gut; Material und Zustand bitte in der Anzeige ergänzen.\nAuf den Fotos sind keine Mängel zu erkennen.\nFür den Alltag.', 'fehlt': []})
+        self.assertEqual(b['titel'], 'Polo Ralph Lauren Sweatshirt grau')
+        self.assertEqual(b['beschreibung'], 'Polo Ralph Lauren Sweatshirt in Grau.\nFür den Alltag.')
+        self.assertIsNone(P.bereinigen({'titel': 'Größe unbekannt', 'beschreibung': 'Text'}))
+        self.assertIsNone(P.bereinigen({'titel': 'Hoodie', 'beschreibung': 'Zustand bitte ergänzen.'}))
+
     def test_json_aus_text(self):
         self.assertEqual(P.json_aus_text('Hier: {"a": 1} Ende'), {'a': 1})
         self.assertEqual(P.json_aus_text('{"a": 1}'), {'a': 1})
