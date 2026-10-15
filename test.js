@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');
 const code=html.split('/* LOGIK-START')[1].split('/* LOGIK-END */')[0].replace(/^[^\n]*\n/,'');
-const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv,suchLink,sucheSauber,suchenMischen,deal,ECHT,kiOrtOk,kiStandSauber,kiZaehler,kiAntwort,kiBeschreibung,kiTitelChecks,beschrText,BESCHR_ENDE,KI_LIMIT};')();
+const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv,suchLink,suchLinkSauber,sucheName,sucheSauber,suchenMischen,deal,ECHT,kiOrtOk,kiStandSauber,kiZaehler,kiAntwort,kiBeschreibung,kiTitelChecks,beschrText,BESCHR_ENDE,KI_LIMIT};')();
 let ok=0,fail=0;
 const eq=(name,a,b)=>{const s=JSON.stringify(a)===JSON.stringify(b);s?ok++:fail++;if(!s)console.log('FEHLER',name,'ist',a,'soll',b)};
 // Versandfrist 5 Werktage
@@ -102,8 +102,21 @@ eq('CSV Summe',c[3],';Summe (2 Verkäufe);;;;;;26,50;0,00;12,00;14,50;;');
 eq('Such-Link',L.suchLink({marke:'Venum',typ:'Gi',groesse:'A2',max:30}),'https://www.vinted.de/catalog?search_text=Venum+Gi+A2&order=newest_first&price_to=30&currency=EUR');
 eq('Such-Link ohne Preis',L.suchLink({typ:'Rashguard & Shorts'}),'https://www.vinted.de/catalog?search_text=Rashguard+%26+Shorts&order=newest_first');
 eq('Such-Link leer',L.suchLink({marke:' ',max:20}),null);
-eq('Suche säubern',L.sucheSauber({id:7,marke:' Nike ',typ:'Hoodie',max:'25,5',x:'<b>',geaendert:'5'}),{id:'7',marke:'Nike',typ:'Hoodie',groesse:'',max:25.5,geaendert:5});
+eq('Suche säubern',L.sucheSauber({id:7,marke:' Nike ',typ:'Hoodie',max:'25,5',x:'<b>',geaendert:'5'}),{id:'7',marke:'Nike',typ:'Hoodie',groesse:'',max:25.5,link:'',geaendert:5});
 eq('Suche ohne id',L.sucheSauber({marke:'Nike'}),null);
+// 6.1: eigener Such-Link von vinted.de (Größe und Kategorie über Vinteds Filter)
+const VL='https://www.vinted.de/catalog?search_text=venum%20gi&catalog[]=2656&size_ids[]=1234&brand_ids[]=99';
+eq('Eigener Link säubern',L.suchLinkSauber(VL+'&time=1760540000&search_id=123&page=2&utm_source=x'),VL);
+eq('Eigener Link ohne https und www',L.suchLinkSauber('vinted.de/catalog?catalog[]=5'),'https://www.vinted.de/catalog?catalog[]=5');
+eq('Eigener Link aus Text',L.suchLinkSauber('Schau mal: '+VL+' danke'),VL);
+eq('Eigener Link Kategorie-Seite',L.suchLinkSauber('https://www.vinted.de/catalog/2050-herren?size_ids[]=208#oben'),'https://www.vinted.de/catalog/2050-herren?size_ids[]=208');
+eq('Kein Such-Link',['https://www.vinted.de/items/123-hoodie','https://www.vinted.fr/catalog?x=1','https://vinted.de.evil.com/catalog','https://www.vinted.de@evil.com/catalog','https://www.vinted.de:8080/catalog','https://www.vinted.de/catalogue','',null].map(L.suchLinkSauber),[null,null,null,null,null,null,null,null]);
+eq('Such-Link mit eigenem Link',L.suchLink({marke:'Venum',link:VL}),VL+'&order=newest_first');
+eq('Höchstpreis ersetzt Preis im Link',L.suchLink({link:'https://www.vinted.de/catalog?catalog[]=5&price_to=50&currency=EUR&order=price_low_to_high',max:30}),'https://www.vinted.de/catalog?catalog[]=5&order=price_low_to_high&price_to=30&currency=EUR');
+eq('Link ohne Filter',L.suchLink({link:'https://www.vinted.de/catalog'}),'https://www.vinted.de/catalog?order=newest_first');
+eq('Ungültiger Link nimmt Suchtext',L.suchLink({marke:'Nike',link:'https://evil.com/catalog'}),'https://www.vinted.de/catalog?search_text=Nike&order=newest_first');
+eq('Name der Suche',[L.sucheName({marke:'Nike',typ:'Hoodie',link:VL}),L.sucheName({link:VL}),L.sucheName({link:'https://www.vinted.de/catalog?catalog[]=5'})],['Nike Hoodie','venum gi','Eigene Vinted-Suche']);
+eq('Suche mit Link säubern',[L.sucheSauber({id:1,link:VL+'&time=1'}).link,L.sucheSauber({id:2,link:'javascript:alert(1)'}).link],[VL,'']);
 const d1=L.deal({kauf:20,portoEin:4.5,vk:45,minuten:30});
 eq('Deal Schutz und Kosten',[d1.schutz,d1.kosten,d1.gewinn],[1.7,26.2,18.8]);
 eq('Deal pro Stunde und Ampel',[Math.round(d1.stunde*10)/10,d1.ampel],[37.6,'g']);

@@ -194,11 +194,13 @@ p{margin:6px 0}
   <div class="card">
     <h2>Gespeicherte Suchen</h2>
     <p class="muted">„Suche öffnen“ zeigt die Vinted-Suche mit deinen Angaben, neueste zuerst. Der Helfer ruft dabei nichts ab. Den Alarm macht die Vinted-App: Suche dort öffnen und speichern, dann meldet sie neue Treffer.</p>
+    <p class="muted">Größe und Kategorie filtert Vinted nur über einen eigenen Link. So geht es: Auf vinted.de im Browser suchen, Kategorie, Größe und andere Filter setzen, die Adresse oben kopieren und hier bei „Eigener Vinted-Link“ einfügen.</p>
     <div class="grid">
       <div><label>Marke</label><input id="f-marke" placeholder="Venum" maxlength="60"></div>
       <div><label>Was</label><input id="f-typ" placeholder="Gi" maxlength="60"></div>
       <div><label>Größe</label><input id="f-groesse" placeholder="A2" maxlength="60"></div>
       <div><label>Höchstpreis (€)</label><input id="f-max" type="number" step="0.5" min="0" inputmode="decimal"></div>
+      <div style="grid-column:1/-1"><label>Eigener Vinted-Link (optional)</label><input id="f-link" type="url" inputmode="url" placeholder="https://www.vinted.de/catalog?…" maxlength="2000"></div>
     </div>
     <p class="btns"><button class="p" id="f-add">Suche speichern</button><button class="s hide" id="f-abbr">Abbrechen</button> <span class="hint" id="f-msg"></span></p>
     <div id="f-list"></div>
@@ -512,19 +514,43 @@ function heute(items,meta,ref){
 }
 // Phase 5 Fund-Alarm: nur ein Such-Planer. Der Helfer baut Links, öffnen und kaufen tust du selbst.
 const MIN_GEWINN=10,MIN_STUNDE=10,SCHUTZ_FIX=0.7,SCHUTZ_PROZENT=5;
-// Vinted-Suche, neueste zuerst. Marke und Größe stehen im Suchtext, weil Vinteds Filter interne Nummern brauchen.
+// Eigener Such-Link, auf vinted.de mit Filtern gebaut (Größe, Kategorie, Marke). Nur https://www.vinted.de/catalog…,
+// ohne Zeitstempel, Seitenzahl und Werbe-Anhängsel. Die Filter bleiben so, wie Vinted sie geschrieben hat.
+function suchLinkSauber(roh){
+  const m=String(roh??'').match(/(?:https?:\/\/)?(?:www\.)?vinted\.de\/catalog(?![^/?#\s<>"'])(?:[/?#][^\s<>"']*)?/i);if(!m)return null;
+  let u;try{u=new URL(m[0].replace(/^(?:https?:\/\/)?/i,'https://'))}catch(e){return null}
+  if(!/^(www\.)?vinted\.de$/i.test(u.hostname)||u.username||u.password||u.port||!/^\/catalog(\/|$)/.test(u.pathname))return null;
+  const q=u.search.slice(1).split('&').filter(x=>x&&!/^(time|search_id|page|utm_[^=]*)=/i.test(x));
+  const l='https://www.vinted.de'+u.pathname+(q.length?'?'+q.join('&'):'');
+  return l.length<=2000?l:null;
+}
+// Vinted-Suche, neueste zuerst. Ohne eigenen Link stehen Marke und Größe im Suchtext, weil Vinteds Filter interne Nummern brauchen.
+// Mit eigenem Link gilt der Höchstpreis aus dem Helfer, sonst der aus dem Link.
 function suchLink(s){
+  const eigen=s.link?suchLinkSauber(s.link):null;
+  if(eigen){
+    const i=eigen.indexOf('?'),pfad=i<0?eigen:eigen.slice(0,i);let q=i<0?[]:eigen.slice(i+1).split('&');
+    if(s.max>0)q=q.filter(x=>!/^(price_to|currency)=/i.test(x)).concat('price_to='+s.max,'currency=EUR');
+    if(!q.some(x=>/^order=/i.test(x)))q.push('order=newest_first');
+    return pfad+'?'+q.join('&');
+  }
   const text=[s.marke,s.typ,s.groesse].map(x=>String(x??'').trim()).filter(Boolean).join(' ');
   if(!text)return null;
   const p=new URLSearchParams({search_text:text,order:'newest_first'});
   if(s.max>0){p.set('price_to',String(s.max));p.set('currency','EUR')}
   return 'https://www.vinted.de/catalog?'+p.toString();
 }
-// Gespeicherte Suche aus Eingabe oder Datei: nur bekannte Felder, kurze Texte
+// Name einer Suche für die Liste: deine Angaben, sonst der Suchtext aus dem Link
+function sucheName(s){
+  const t=[s.marke,s.typ,s.groesse].filter(Boolean).join(' ');if(t)return t;
+  try{const q=new URL(s.link).searchParams.get('search_text');if(q&&q.trim())return q.trim().slice(0,60)}catch(e){}
+  return 'Eigene Vinted-Suche';
+}
+// Gespeicherte Suche aus Eingabe oder Datei: nur bekannte Felder, kurze Texte, nur gültige Vinted-Such-Links
 function sucheSauber(s){
   if(!s||typeof s!=='object'||s.id==null)return null;
   const t=x=>String(x??'').trim().slice(0,60),max=num(s.max);
-  return {id:String(s.id).slice(0,30),marke:t(s.marke),typ:t(s.typ),groesse:t(s.groesse),max:max>0?max:null,geaendert:Number(s.geaendert)||0};
+  return {id:String(s.id).slice(0,30),marke:t(s.marke),typ:t(s.typ),groesse:t(s.groesse),max:max>0?max:null,link:suchLinkSauber(s.link)||'',geaendert:Number(s.geaendert)||0};
 }
 // Suchen zusammenführen: je Suche gewinnt die neuere Änderung, ein jüngerer Lösch-Vermerk entfernt sie
 function suchenMischen(a,b){
@@ -591,7 +617,7 @@ const kiTitelChecks=t=>titelChecks({marke:'x',typ:'x',groesse:'x',farbe:'x'},t);
 const beschrText=it=>String(it.beschr||'').trim()?it.beschr:beschreibung(it);
 /* LOGIK-END */
 
-const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='6.0 vom 15.10.2026',BILD_PX=160;
+const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='6.1 vom 15.10.2026',BILD_PX=160;
 const ADRESSE='https://antont10.github.io/vinted-helfer/';
 const TABS=['heute','liste','angebote','rechner','einkauf','zahlen','daten'];
 let items=[],meta={},editId=null,filt='offen',relistId=null,relistWarn=false,stand=new Map(),nBild=null,db=null,dauerhaft=null;
@@ -1068,7 +1094,7 @@ let sucheEdit=null,echtKat='kampfsport';
 const echtHaken=new Set();
 function renderEinkauf(){
   const S=meta.suchen;
-  $('#f-list').innerHTML=S.length?S.map(s=>{const l=suchLink(s);return `<div class="task"><div><div class="tt">${esc([s.marke,s.typ,s.groesse].filter(Boolean).join(' '))}</div><div class="muted">${s.max?'bis '+eur(s.max):'ohne Höchstpreis'}</div></div>
+  $('#f-list').innerHTML=S.length?S.map(s=>{const l=suchLink(s);return `<div class="task"><div><div class="tt">${esc(sucheName(s))}</div><div class="muted">${esc([s.max?'bis '+eur(s.max):s.link?'':'ohne Höchstpreis',s.link?'eigener Link mit Filtern':''].filter(Boolean).join(' · '))}</div></div>
     <div class="acts">${l?`<a class="s" href="${esc(l)}" target="_blank" rel="noopener noreferrer">Suche öffnen ↗</a>`:''}<button class="s" data-fs="edit" data-id="${esc(s.id)}">Ändern</button><button class="s warn" data-fs="del" data-id="${esc(s.id)}">Löschen</button></div></div>`}).join('')
     :'<p class="muted">Noch keine Suche gespeichert.</p>';
   $('#e-kat').innerHTML=Object.entries(ECHT).map(([k,[l]])=>`<button data-k="${k}"${k===echtKat?' class="on"':''}>${l}</button>`).join('');
@@ -1082,14 +1108,16 @@ function echtStand(){
 }
 function sucheFormular(s){
   sucheEdit=s?s.id:null;
-  $('#f-marke').value=s?s.marke:'';$('#f-typ').value=s?s.typ:'';$('#f-groesse').value=s?s.groesse:'';$('#f-max').value=s&&s.max?s.max:'';
+  $('#f-marke').value=s?s.marke:'';$('#f-typ').value=s?s.typ:'';$('#f-groesse').value=s?s.groesse:'';$('#f-max').value=s&&s.max?s.max:'';$('#f-link').value=s?s.link:'';
   $('#f-add').textContent=s?'Änderung speichern':'Suche speichern';$('#f-abbr').classList.toggle('hide',!s);
 }
 $('#f-add').addEventListener('click',()=>{
-  const s=sucheSauber({id:sucheEdit??String(Date.now()),marke:$('#f-marke').value,typ:$('#f-typ').value,groesse:$('#f-groesse').value,max:$('#f-max').value,geaendert:Date.now()});
-  if(!suchLink(s)){$('#f-msg').textContent='Bitte Marke oder „Was“ eintragen.';return}
+  const roh=$('#f-link').value.trim();
+  if(roh&&!suchLinkSauber(roh)){$('#f-msg').textContent='Das ist kein Vinted-Such-Link. Er beginnt mit https://www.vinted.de/catalog';return}
+  const s=sucheSauber({id:sucheEdit??String(Date.now()),marke:$('#f-marke').value,typ:$('#f-typ').value,groesse:$('#f-groesse').value,max:$('#f-max').value,link:roh,geaendert:Date.now()});
+  if(!suchLink(s)){$('#f-msg').textContent='Bitte Marke, „Was“ oder einen eigenen Vinted-Link eintragen.';return}
   const i=meta.suchen.findIndex(x=>x.id===s.id);i>=0?meta.suchen[i]=s:meta.suchen.push(s);
-  sucheFormular(null);save();renderEinkauf();$('#f-msg').textContent='Gespeichert.';
+  sucheFormular(null);save();renderEinkauf();$('#f-msg').textContent=s.link?'Gespeichert. „Suche öffnen“ nimmt deinen Link.':'Gespeichert.';
 });
 $('#f-abbr').addEventListener('click',()=>{sucheFormular(null);$('#f-msg').textContent=''});
 $('#f-list').addEventListener('click',e=>{
