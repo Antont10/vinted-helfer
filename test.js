@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');
 const code=html.split('/* LOGIK-START')[1].split('/* LOGIK-END */')[0].replace(/^[^\n]*\n/,'');
-const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse};')();
+const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv};')();
 let ok=0,fail=0;
 const eq=(name,a,b)=>{const s=JSON.stringify(a)===JSON.stringify(b);s?ok++:fail++;if(!s)console.log('FEHLER',name,'ist',a,'soll',b)};
 // Versandfrist 5 Werktage
@@ -75,4 +75,27 @@ eq('Foto bleibt, wenn anderswo der Preis neuer ist',[zf.items[0].preis,zf.items[
 eq('Foto entfernt ist neuer',L.zusammenfuehren({items:[{id:1,geaendert:100,bildAm:100}],bilder:{1:'f'}},{items:[{id:1,geaendert:300,bildAm:300}],bilder:{}}).bilder,{});
 eq('in leeren Helfer',L.zusammenfuehren({items:[]},{items:[{id:1,name:'X'}]}).neu,1);
 eq('Größe',[L.groesse(500),L.groesse(184320),L.groesse(2621440)],['1 KB','180 KB','2,5 MB']);
+// Jahreszähler (Phase 3)
+const vk=(n,eur,d='2026-05-01')=>Array.from({length:n},(_,k)=>({id:k,status:'bewertet',vk:eur,verkauftAm:d}));
+eq('24 Verkäufe',L.jahr(vk(24,10),2026).stufe,0);
+eq('25 Verkäufe warnt',L.jahr(vk(25,10),2026).stufe,1);
+eq('30 Verkäufe Meldegrenze',L.jahr(vk(30,10),2026).stufe,2);
+eq('1.500 € warnt',L.jahr(vk(3,500),2026).stufe,1);
+eq('2.000 € Meldegrenze',[L.jahr(vk(4,500),2026).stufe,L.jahr(vk(4,500),2026).umsatz],[2,2000]);
+eq('anderes Jahr zählt nicht',L.jahr([...vk(30,10,'2025-12-31'),{status:'eingestellt',vk:99,verkauftAm:'2026-01-01'}],2026).n,0);
+eq('Heute-Hinweis bis Gesehen',[L.heute(vk(25,10),{postfach:'2026-05-02',export:'2026-05-02'},'2026-05-02').map(t=>t.typ),L.heute(vk(25,10),{postfach:'2026-05-02',export:'2026-05-02',jahrHinweis:'2026:1'},'2026-05-02').length],[['jahr'],0]);
+// Marke und Kategorie
+eq('Kategorien',['Polo Ralph Lauren Zip-Hoodie weiß M','Jordan Air Dri-FIT Hoodie schwarz S','Nike Center Swoosh Sweatshirt creme M','Zara Poloshirt beige S','Polo Ralph Lauren Performance Weste blau L','Adidas Gi weiß A2','Lego Technic 42115','Etwas'].map(name=>L.kategorie({name})),
+  ['Zip-Hoodie','Hoodie','Pullover/Sweatshirt','T-Shirt/Polo','Jacke/Weste','Kampfsport','Lego/Spiele','Sonstiges']);
+eq('Marken',[L.markeVon({name:'Polo Ralph Lauren Sweatshirt grau S'}),L.markeVon({name:'Jordan Air Hoodie'}),L.markeVon({name:'Hoodie grau'}),L.markeVon({name:'x',marke:'Nike'})],['Ralph Lauren','Jordan','Ohne Marke','Nike']);
+const gl=L.gruppen([{name:'Nike Hoodie',status:'verkauft',vk:30,ek:5,datum:'2026-10-01',verkauftAm:'2026-10-05'},{name:'Nike Hoodie 2',status:'eingestellt'},{name:'Zara Shirt',status:'bewertet',vk:10,datum:'2026-10-01',verkauftAm:'2026-10-03'},{name:'Idee',status:'idee'}],L.markeVon);
+eq('Gruppen',gl.map(g=>[g.k,g.n,g.gewinn,g.tageSchnitt,g.offen]),[['Nike',1,25,4,1],['Zara',1,10,2,0]]);
+eq('Gewinn pro Stunde',L.proStunde([{status:'verkauft',vk:20,minuten:30},{status:'verkauft',vk:10,kosten:2,minuten:30},{status:'verkauft',vk:50}]).wert,28);
+eq('ohne Zeit',L.proStunde([{status:'verkauft',vk:20}]),null);
+// CSV
+const c=L.csv([{name:'Gi; "Adidas"',status:'verkauft',vk:16,ek:0,datum:'2026-10-10',verkauftAm:'2026-10-12'},{name:'=SUMME(A1)',status:'versendet',vk:10.5,kosten:12,verkauftAm:'2026-10-11'},{name:'Alt',status:'verkauft',vk:5,verkauftAm:'2025-12-01'}],2026).split('\r\n');
+eq('CSV Kopf und BOM',c[0].startsWith('﻿Verkauft am;Artikel;Marke'),true);
+eq('CSV sortiert, Komma, Schutz vor Formeln',c[1],"11.10.2026;'=SUMME(A1);'=SUMME(A1);Sonstiges;Versendet;;;10,50;0,00;12,00;-1,50;;");
+eq('CSV Anführungszeichen',c[2].split(';').slice(0,1).concat(c[2].includes('"Gi; ""Adidas"""')),['12.10.2026',true]);
+eq('CSV Summe',c[3],';Summe (2 Verkäufe);;;;;;26,50;0,00;12,00;14,50;;');
 console.log(`${ok} ok, ${fail} Fehler`);process.exit(fail?1:0);

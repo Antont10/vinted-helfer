@@ -44,6 +44,7 @@ input.datei{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
 .thumb.k{width:32px;height:32px}.thumb.g{width:96px;height:96px;border-radius:10px}
 .art{display:flex;gap:10px;align-items:flex-start}
 .kurz{display:none}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin:8px 0}.bar i{display:block;height:100%}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:top}
@@ -82,13 +83,18 @@ p{margin:6px 0}
   #tabs button{flex:1;min-width:0;border:0;border-radius:10px;padding:12px 2px;font-size:13px;background:none}
   #tabs button.on{background:var(--acc);color:var(--onacc)}
   .lang{display:none}.kurz{display:inline}
-  #aktiv tr.kopf{display:none}
+  #aktiv tr.kopf,#verkauft tr.kopf{display:none}
+  #verkauft tr{display:grid;grid-template-columns:repeat(3,auto);justify-content:start;gap:6px 18px;padding:12px 0;border-bottom:1px solid var(--line)}
+  #verkauft td{border:0;padding:0}#verkauft td:first-child{grid-column:1/-1}
+  #verkauft td[data-l]::before{content:attr(data-l);display:block;font-size:11px;color:var(--mut)}
   #aktiv tr{display:grid;grid-template-columns:repeat(3,auto);justify-content:start;gap:6px 18px;padding:12px 0;border-bottom:1px solid var(--line)}
   #aktiv td{border:0;padding:0}
   #aktiv td:first-child,#aktiv td:last-child{grid-column:1/-1}
   #aktiv td[data-l]::before{content:attr(data-l);display:block;font-size:11px;color:var(--mut)}
   #aktiv .acts{justify-content:flex-start}
   .card{padding:12px}
+  #z-kat .um,#z-marke .um{display:none}
+  #z-kat td,#z-kat th,#z-marke td,#z-marke th{padding:8px 4px}
 }
 </style>
 </head>
@@ -171,11 +177,24 @@ p{margin:6px 0}
 </section>
 
 <section id="t-zahlen" class="hide">
+  <div class="card"><h2 id="z-jahr-titel">Jahreszähler</h2><div id="z-jahr"></div></div>
   <div class="card"><h2>Dieser Monat</h2><div class="grid" id="z-monat"></div></div>
-  <div class="card"><h2>Gesamt</h2><div class="grid" id="z-gesamt"></div></div>
+  <div class="card"><h2>Gesamt</h2><div class="grid" id="z-gesamt"></div><p class="muted" id="z-std"></p></div>
+  <div class="card">
+    <h2>Was sich lohnt</h2>
+    <p class="muted">Sortiert nach Gewinn. Kategorie und Marke kommen aus dem Titel-Baukasten, sonst aus dem Namen.</p>
+    <h3>Nach Kategorie</h3><div class="tbl"><table id="z-kat"></table></div>
+    <h3>Nach Marke</h3><div class="tbl"><table id="z-marke"></table></div>
+  </div>
   <div class="card">
     <h2>Verkauft</h2>
     <div class="tbl"><table id="verkauft"></table></div>
+  </div>
+  <div class="card">
+    <h2>CSV für Mama und Steuerberater</h2>
+    <p class="muted">Alle Verkäufe eines Jahres mit Gewinn und Summe. Öffnet in Excel oder Numbers.</p>
+    <div class="grid"><div><label>Jahr</label><select id="csv-jahr"></select></div></div>
+    <div class="btns"><button class="p hide" id="csv-share">Teilen</button><button class="p" id="csv-dl">Herunterladen</button></div>
   </div>
 </section>
 
@@ -228,6 +247,7 @@ const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const today=()=>iso(new Date());
 const toDate=s=>{const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
 const fmt=s=>s?s.slice(8,10)+'.'+s.slice(5,7)+'.':'';
+const eur0=n=>Math.round(n||0).toLocaleString('de-DE')+' €';
 const eur=n=>(Math.round((n||0)*100)/100).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 // round statt floor, sonst fehlt nach der Zeitumstellung ein Tag
 const ageDays=(s,ref)=>s?Math.max(0,Math.round((toDate(ref||today())-toDate(s))/86400000)):0;
@@ -303,6 +323,61 @@ function zusammenfuehren(a,b){
   return {items,geloescht:del,bilder,...n};
 }
 const groesse=b=>b<1048576?Math.max(1,Math.round(b/1024))+' KB':(b/1048576).toFixed(1).replace('.',',')+' MB';
+// Phase 3: Zahlen
+// Meldegrenze laut § 4 Abs. 5 Nr. 4 PStTG: ab 30 Verkäufen oder 2.000 € im Jahr meldet Vinted ans Bundeszentralamt für Steuern
+const MELDE_N=30,MELDE_EUR=2000,WARN_N=25,WARN_EUR=1500;
+const istVerkauft=i=>VERKAUFT.includes(i.status);
+const gewinn=i=>(i.vk||0)-(i.ek||0)-(i.kosten||0);
+function jahr(items,y){
+  const v=items.filter(i=>istVerkauft(i)&&String(i.verkauftAm||'').slice(0,4)===String(y));
+  const n=v.length,umsatz=v.reduce((s,i)=>s+(i.vk||0),0);
+  return {n,umsatz,stufe:n>=MELDE_N||umsatz>=MELDE_EUR?2:n>=WARN_N||umsatz>=WARN_EUR?1:0};
+}
+// Marke: Feld aus dem Titel-Baukasten, sonst Anfang des Namens
+const MARKEN=[['polo ralph lauren','Ralph Lauren'],['ralph lauren','Ralph Lauren'],['the north face','The North Face'],['tommy hilfiger','Tommy Hilfiger'],['calvin klein','Calvin Klein'],['stone island','Stone Island'],['carhartt','Carhartt'],['new balance','New Balance'],['under armour','Under Armour']];
+// Kategorie per Stichwort im Typ oder Namen, Reihenfolge zählt (Zip-Hoodie vor Hoodie, Sweatshirt vor Shirt)
+const KATEGORIEN=[['Zip-Hoodie',/zip|sweatjacke/],['Hoodie',/hoodie|kapuze/],['Pullover/Sweatshirt',/sweat|pullover|pulli|strick/],['Jacke/Weste',/jacke|weste|parka|mantel|bomber/],
+  ['T-Shirt/Polo',/t-?shirt|poloshirt|\bshirt\b|\btop\b/],['Hose',/hose|jeans|shorts|jogger/],['Schuhe',/sneaker|schuh|stiefel|boots/],
+  ['Kampfsport',/\bgi\b|kimono|rashguard|boxhandschuh|bandage|kickbox|\bbjj\b|judo|karate/],['Technik',/iphone|ipad|kopfhörer|airpods|konsole|controller|garmin|kamera/],['Lego/Spiele',/lego|spiel|puzzle/]];
+function kategorie(it){const s=((it.typ||'')+' '+(it.name||'')).toLowerCase();const k=KATEGORIEN.find(([,r])=>r.test(s));return k?k[0]:'Sonstiges'}
+function markeVon(it){
+  if(String(it.marke||'').trim())return String(it.marke).trim();
+  const n=String(it.name||'').trim(),low=n.toLowerCase(),m=MARKEN.find(([p])=>low.startsWith(p));
+  if(m)return m[1];
+  const w=n.split(/\s+/)[0]||'';
+  return !w||KATEGORIEN.some(([,r])=>r.test(w.toLowerCase()))?'Ohne Marke':w;
+}
+// Was sich lohnt: je Gruppe Verkäufe, Umsatz, Gewinn, Ø Tage bis Verkauf, noch offen
+function gruppen(items,keyFn){
+  const g=new Map();
+  for(const i of items){
+    const k=keyFn(i),x=g.get(k)||{k,n:0,umsatz:0,gewinn:0,tage:0,offen:0};
+    if(istVerkauft(i)){x.n++;x.umsatz+=i.vk||0;x.gewinn+=gewinn(i);x.tage+=ageDays(i.datum,i.verkauftAm)}
+    else if(i.status==='eingestellt')x.offen++;
+    g.set(k,x);
+  }
+  return [...g.values()].filter(x=>x.n||x.offen).map(x=>({...x,tageSchnitt:x.n?x.tage/x.n:null}))
+    .sort((a,b)=>b.gewinn-a.gewinn||b.n-a.n||a.k.localeCompare(b.k));
+}
+// Gewinn pro Stunde, nur Verkäufe mit erfasster Zeit
+function proStunde(items){
+  const v=items.filter(i=>istVerkauft(i)&&i.minuten>0),min=v.reduce((s,i)=>s+i.minuten,0);
+  return min?{wert:v.reduce((s,i)=>s+gewinn(i),0)/min*60,n:v.length,min}:null;
+}
+// CSV für Mama und Steuerberater: Semikolon und Komma, damit Excel es in Deutschland direkt öffnet
+const csvZahl=n=>(Math.round((n||0)*100)/100).toFixed(2).replace('.',',');
+const csvText=s=>{s=String(s??'');return /^[=+\-@\t\r]/.test(s)?"'"+s:s};
+const csvFeld=s=>{s=String(s??'');return /[;"\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+function csv(items,y){
+  const v=items.filter(i=>istVerkauft(i)&&(!y||String(i.verkauftAm||'').slice(0,4)===String(y)))
+    .sort((a,b)=>String(a.verkauftAm||'').localeCompare(String(b.verkauftAm||'')));
+  const d=s=>s?s.slice(8,10)+'.'+s.slice(5,7)+'.'+s.slice(0,4):'',sum=f=>v.reduce((s,i)=>s+(f(i)||0),0);
+  const rows=[['Verkauft am','Artikel','Marke','Kategorie','Status','Eingestellt am','Tage bis Verkauf','Verkaufspreis (€)','Einkaufspreis (€)','Kosten (€)','Gewinn (€)','Zeit (Min.)','Link'],
+    ...v.map(i=>[d(i.verkauftAm),csvText(i.name),csvText(markeVon(i)),kategorie(i),SL[i.status],d(i.datum),i.datum&&i.verkauftAm?ageDays(i.datum,i.verkauftAm):'',
+      csvZahl(i.vk),csvZahl(i.ek),csvZahl(i.kosten),csvZahl(gewinn(i)),i.minuten||'',csvText(i.link||'')]),
+    ['',`Summe (${v.length} Verkäufe)`,'','','','','',csvZahl(sum(i=>i.vk)),csvZahl(sum(i=>i.ek)),csvZahl(sum(i=>i.kosten)),csvZahl(sum(gewinn)),sum(i=>i.minuten)||'','']];
+  return '﻿'+rows.map(r=>r.map(csvFeld).join(';')).join('\r\n')+'\r\n';
+}
 const zustandKurz=z=>z==='Neu mit Etikett'?'neu mit Etikett':z==='Neu ohne Etikett'?'neu':'';
 function titel(it){
   const g=String(it.groesse||'').trim();
@@ -372,11 +447,15 @@ function heute(items,meta,ref){
   }
   if(meta.postfach!==ref)T.push({p:1,typ:'post',txt:'Vinted-Nachrichten prüfen',info:'Innerhalb von 24 Stunden antworten'});
   if(items.length&&(!meta.export||ageDays(meta.export,ref)>=EXPORT_TAGE))T.push({p:8,typ:'export',txt:'Daten sichern',info:meta.export?`Zuletzt am ${fmt(meta.export)}`:'Noch nie gesichert'});
+  // Jahreszähler: Hinweis ab 25 Verkäufen oder 1.500 €, bis du „Gesehen“ tippst (kommt bei der nächsten Stufe wieder)
+  const y=ref.slice(0,4),J=jahr(items,y);
+  if(J.stufe&&meta.jahrHinweis!==y+':'+J.stufe)T.push({p:J.stufe===2?1:9,typ:'jahr',rot:J.stufe===2,stufe:J.stufe,txt:J.stufe===2?'Meldegrenze erreicht':'Bald Meldegrenze',
+    info:`${y}: ${J.n} Verkäufe, ${eur(J.umsatz)}. Ab ${MELDE_N} Verkäufen oder ${eur0(MELDE_EUR)} meldet Vinted ans Finanzamt. Das ist keine Steuerpflicht, aber sprich mit Mama.`});
   return T.sort((a,b)=>a.p-b.p);
 }
 /* LOGIK-END */
 
-const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='4.0 vom 12.10.2026',BILD_PX=160;
+const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='4.1 vom 14.10.2026',BILD_PX=160;
 const ADRESSE='https://antont10.github.io/vinted-helfer/';
 const TABS=['heute','liste','angebote','rechner','zahlen','daten'];
 let items=[],meta={},editId=null,filt='offen',relistId=null,relistWarn=false,stand=new Map(),nBild=null,db=null,dauerhaft=null;
@@ -452,6 +531,9 @@ function setStatus(it,s){
     const vk=askNum('Verkaufspreis in €:',it.preis);if(vk===null)return false;
     const k=askNum('Deine Kosten (z. B. Porto, Verpackung) in €, sonst 0:',0);if(k===null)return false;
     it.vk=vk;it.kosten=k;it.verkauftAm=today();
+    // Zeit ist freiwillig: Abbrechen oder leer verkauft trotzdem
+    const mn=prompt('Wie viele Minuten hat dich der Artikel ungefähr gekostet (Fotos, Text, Chat, Versand)? Leer lassen geht auch.',it.minuten??'');
+    if(mn!==null&&mn.trim()!==''){const x=num(mn);if(x!==null&&x>=0)it.minuten=Math.round(x)}
   }
   if(s==='versendet'&&!it.versendetAm)it.versendetAm=today();
   if(s==='bewertet'&&!it.bewertetAm)it.bewertetAm=today();
@@ -471,7 +553,7 @@ function taskBtns(t){
   const b=(h,l)=>`<button class="s" data-h="${h}" data-id="${t.id??''}">${l}</button>`;
   return ({versand:b('versendet','Versendet'),post:b('post','Erledigt'),nach:b('nachtext','Text')+b('nachok','Erledigt'),
     senk:b('senk','Übernommen'),relist:b('relist','Neu eingestellt'),stellen:b('edit','Bearbeiten')+b('eingestellt','Eingestellt'),
-    bew:b('bewertet','Bewertet'),foto:b('foto','Fotografiert'),export:b('export','Sichern')}[t.typ]||'')+(t.id!=null?linkBtn(byId(t.id),'Vinted'):'');
+    bew:b('bewertet','Bewertet'),foto:b('foto','Fotografiert'),export:b('export','Sichern'),jahr:b('zahlen','Zahlen')+b('jahrok','Gesehen')}[t.typ]||'')+(t.id!=null?linkBtn(byId(t.id),'Vinted'):'');
 }
 function relistForm(id){
   return `<div style="margin-top:8px"><p class="muted">Was hast du geändert?</p>${AENDERUNG.map(a=>`<label class="ck"><input type="checkbox" data-rl> ${a}</label>`).join('')}
@@ -489,6 +571,8 @@ $('#h-list').addEventListener('click',e=>{
   const h=b.dataset.h,it=byId(b.dataset.id);
   if(h==='post'){meta.postfach=today();save()}
   else if(h==='export'){sichern();return}
+  else if(h==='zahlen'){go('zahlen');return}
+  else if(h==='jahrok'){const y=today().slice(0,4);meta.jahrHinweis=y+':'+jahr(items,y).stufe;save()}
   else if(!it)return;
   else if(h==='nachtext'){go('angebote');$('#a-item').value=String(it.id);$('#a-tpl').value='3';fillText();return}
   else if(h==='nachok'){it.nachgefasst=true;save()}
@@ -602,7 +686,7 @@ function closeEdit(){editId=null;$('#edit').classList.add('hide');$('#edit').inn
 function renderEdit(){
   const it=byId(editId);if(!it){closeEdit();return}
   $('#edit').innerHTML=`<div class="row"><h2>Bearbeiten</h2><button class="s" data-e="close">Schließen</button></div>
-  <div class="grid">${fld('link','Vinted-Link','url','https://www.vinted.de/items/…')}${fld('name','Name')}${sel('status','Status',STATUS)}${fld('preis','Preis (€)','number')}${fld('min','Mindestpreis (€)','number')}${fld('ek','Einkaufspreis (€)','number')}${fld('datum','Eingestellt am','date')}${fld('gelistet','Zuletzt neu eingestellt','date')}</div>
+  <div class="grid">${fld('link','Vinted-Link','url','https://www.vinted.de/items/…')}${fld('name','Name')}${sel('status','Status',STATUS)}${fld('preis','Preis (€)','number')}${fld('min','Mindestpreis (€)','number')}${fld('ek','Einkaufspreis (€)','number')}${fld('datum','Eingestellt am','date')}${fld('gelistet','Zuletzt neu eingestellt','date')}${fld('minuten','Zeit gesamt (Min.)','int')}</div>
   <p id="e-link"></p>
   <div class="btns">${bildTag(it,'g')}<label class="s" for="e-foto">${bilder.has(String(it.id))?'Foto ändern':'Foto wählen'}</label><input type="file" id="e-foto" class="datei" accept="image/*">${bilder.has(String(it.id))?'<button class="s" data-e="bildweg">Foto entfernen</button>':''}</div>
   <h3>Titel-Baukasten</h3>
@@ -721,22 +805,67 @@ $('#b-copy').addEventListener('click',()=>copy($('#b-text').value,$('#b-msg')));
 
 // Zahlen
 function stats(list){
-  const n=list.length,um=list.reduce((s,i)=>s+(i.vk||0),0),ge=list.reduce((s,i)=>s+(i.vk||0)-(i.ek||0)-(i.kosten||0),0);
+  const n=list.length,um=list.reduce((s,i)=>s+(i.vk||0),0),ge=list.reduce((s,i)=>s+gewinn(i),0);
   const tage=n?list.reduce((s,i)=>s+ageDays(i.datum,i.verkauftAm),0)/n:0;
   return {n,um,ge,tage};
 }
-function renderZahlen(){
-  const v=items.filter(i=>VERKAUFT.includes(i.status)),m=today().slice(0,7);
-  const f=s=>card('Verkäufe',s.n)+card('Umsatz',eur(s.um))+card('Gewinn',eur(s.ge))+card('Ø Tage bis Verkauf',s.n?s.tage.toFixed(1).replace('.',','):'–');
-  $('#z-monat').innerHTML=f(stats(v.filter(i=>(i.verkauftAm||'').slice(0,7)===m)));
-  const akt=items.filter(i=>i.status==='eingestellt');
-  $('#z-gesamt').innerHTML=f(stats(v))+card('Eingestellt',akt.length)+card('Wert der eingestellten',eur(akt.reduce((s,i)=>s+(i.preis||0),0)));
-  let h='<tr><th>Artikel</th><th>Verkauft am</th><th>Preis</th><th>Gewinn</th><th>Tage</th></tr>';
-  if(!v.length)h+='<tr><td colspan="5" class="muted">Noch nichts verkauft.</td></tr>';
-  for(const i of [...v].sort((a,b)=>(b.verkauftAm||'').localeCompare(a.verkauftAm||'')))
-    h+=`<tr><td>${esc(i.name)} <span class="badge">${SL[i.status]}</span></td><td>${esc(fmt(i.verkauftAm))}</td><td class="num">${eur(i.vk)}</td><td class="num">${eur((i.vk||0)-(i.ek||0)-(i.kosten||0))}</td><td class="num">${ageDays(i.datum,i.verkauftAm)}</td></tr>`;
-  $('#verkauft').innerHTML=h;
+const komma=(x,d=1)=>x.toFixed(d).replace('.',',');
+function balken(wert,max,stufe){return `<div class="bar"><i class="${stufe===2?'r':stufe===1?'y':'g'}" style="width:${Math.min(100,wert/max*100).toFixed(1)}%"></i></div>`}
+function renderJahr(){
+  const y=today().slice(0,4),J=jahr(items,y);
+  $('#z-jahr-titel').textContent='Jahreszähler '+y;
+  const box=(l,v,von,w,max)=>`<div><label>${l}</label><div class="stat">${v}</div><div class="muted">von ${von}</div>${balken(w,max,J.stufe)}</div>`;
+  $('#z-jahr').innerHTML=`<div class="grid">${box('Verkäufe',J.n,MELDE_N,J.n,MELDE_N)}${box('Umsatz',eur(J.umsatz),eur0(MELDE_EUR),J.umsatz,MELDE_EUR)}</div>
+    ${J.stufe===2?`<p class="hint"><b>Meldegrenze erreicht.</b> Vinted meldet Mama für ${y} ans Bundeszentralamt für Steuern. Sprich mit ihr, ob ein Steuerberater draufschauen soll.</p>`
+      :J.stufe===1?`<p class="hint"><b>Bald Meldegrenze.</b> Noch ${Math.max(0,MELDE_N-J.n)} Verkäufe oder ${eur(Math.max(0,MELDE_EUR-J.umsatz))}. Sprich mit Mama.</p>`:''}
+    <p class="muted">Vinted meldet ab ${MELDE_N} Verkäufen oder ${eur0(MELDE_EUR)} im Jahr ans Bundeszentralamt für Steuern (§ 4 Abs. 5 Nr. 4 PStTG). Warnung hier ab ${WARN_N} Verkäufen oder ${eur0(WARN_EUR)}. <b>Die Meldung ist keine Steuerpflicht.</b> Es zählen alle Verkäufe auf Mamas Konto, auch die, die nicht im Helfer stehen. Keine Steuerberatung.</p>`;
 }
+function gruppenTab(sel,list){
+  let h='<tr><th></th><th>Verkauft</th><th class="um">Umsatz</th><th>Gewinn</th><th>Ø Tage</th><th>Offen</th></tr>';
+  if(!list.length)h+='<tr><td colspan="6" class="muted">Noch keine Daten.</td></tr>';
+  for(const g of list)h+=`<tr><td>${esc(g.k)}</td><td class="num">${g.n}</td><td class="num um">${eur(g.umsatz)}</td><td class="num">${eur(g.gewinn)}</td><td class="num">${g.tageSchnitt==null?'–':komma(g.tageSchnitt)}</td><td class="num">${g.offen}</td></tr>`;
+  $(sel).innerHTML=h;
+}
+function renderZahlen(){
+  renderJahr();
+  const v=items.filter(istVerkauft),m=today().slice(0,7);
+  const f=s=>card('Verkäufe',s.n)+card('Umsatz',eur(s.um))+card('Gewinn',eur(s.ge))+card('Ø Tage bis Verkauf',s.n?komma(s.tage):'–');
+  $('#z-monat').innerHTML=f(stats(v.filter(i=>(i.verkauftAm||'').slice(0,7)===m)));
+  const akt=items.filter(i=>i.status==='eingestellt'),ps=proStunde(items);
+  $('#z-gesamt').innerHTML=f(stats(v))+card('Gewinn pro Stunde',ps?eur(ps.wert):'–')+card('Eingestellt',akt.length)+card('Wert der eingestellten',eur(akt.reduce((s,i)=>s+(i.preis||0),0)));
+  $('#z-std').textContent=ps?`Gewinn pro Stunde aus ${ps.n} ${ps.n===1?'Verkauf':'Verkäufen'} mit ${ps.min} Minuten Arbeit.`:'Gewinn pro Stunde: Trag unter „Bearbeiten“ ein, wie viele Minuten ein Artikel gedauert hat (Fotos, Text, Chat, Versand).';
+  gruppenTab('#z-kat',gruppen(items,kategorie));
+  gruppenTab('#z-marke',gruppen(items,markeVon));
+  let h='<tr class="kopf"><th>Artikel</th><th>Verkauft am</th><th>Preis</th><th>Gewinn</th><th>Tage</th><th>€/Std</th></tr>';
+  if(!v.length)h+='<tr><td colspan="6" class="muted">Noch nichts verkauft.</td></tr>';
+  for(const i of [...v].sort((a,b)=>(b.verkauftAm||'').localeCompare(a.verkauftAm||'')))
+    h+=`<tr><td>${esc(i.name)} <span class="badge">${SL[i.status]}</span></td><td data-l="Verkauft am">${esc(fmt(i.verkauftAm))}</td><td class="num" data-l="Preis">${eur(i.vk)}</td><td class="num" data-l="Gewinn">${eur(gewinn(i))}</td><td class="num" data-l="Tage">${ageDays(i.datum,i.verkauftAm)}</td><td class="num" data-l="€/Std">${i.minuten>0?eur(gewinn(i)/i.minuten*60):'–'}</td></tr>`;
+  $('#verkauft').innerHTML=h;
+  // Jahre für die CSV: alle mit Verkäufen plus das aktuelle
+  const jahre=[...new Set([today().slice(0,4),...v.map(i=>String(i.verkauftAm||'').slice(0,4)).filter(Boolean)])].sort().reverse(),cur=csvJahr??today().slice(0,4);
+  $('#csv-jahr').innerHTML=jahre.map(y=>`<option>${y}</option>`).join('')+'<option value="">Alle Jahre</option>';
+  $('#csv-jahr').value=[...$('#csv-jahr').options].some(o=>o.value===cur)?cur:today().slice(0,4);
+  $('#csv-share').classList.toggle('hide',!teilbar('x','x.csv','text/csv'));
+}
+// Datei teilen (iPhone: Teilen-Menü) oder herunterladen
+function teilbar(inhalt,name,type){
+  if(!navigator.canShare)return null;
+  for(const t of [type,'text/plain']){try{const f=new File([inhalt],name,{type:t});if(navigator.canShare({files:[f]}))return f}catch(e){}}
+  return null;
+}
+function laden(inhalt,name,type){
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([inhalt],{type}));a.download=name;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+let csvJahr=null;
+$('#csv-jahr').addEventListener('change',()=>{csvJahr=$('#csv-jahr').value});
+const csvName=()=>`vinted-verkaeufe-${$('#csv-jahr').value||'alle'}.csv`;
+$('#csv-dl').addEventListener('click',()=>laden(csv(items,$('#csv-jahr').value),csvName(),'text/csv;charset=utf-8'));
+$('#csv-share').addEventListener('click',async()=>{
+  const inhalt=csv(items,$('#csv-jahr').value),f=teilbar(inhalt,csvName(),'text/csv');
+  if(!f)return laden(inhalt,csvName(),'text/csv;charset=utf-8');
+  try{await navigator.share({files:[f],title:'Vinted-Verkäufe'})}catch(e){if(e&&e.name!=='AbortError')laden(inhalt,csvName(),'text/csv;charset=utf-8')}
+});
 
 // Daten
 const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
