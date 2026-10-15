@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');
 const code=html.split('/* LOGIK-START')[1].split('/* LOGIK-END */')[0].replace(/^[^\n]*\n/,'');
-const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv,suchLink,suchLinkSauber,sucheName,sucheSauber,suchenMischen,deal,kaufUrteil,kaufNachricht,angebotText,angebotSauber,kaufListe,kaufTipp,kiKaufAntwort,kiMitte,ECHT,kiOrtOk,kiStandSauber,kiZaehler,kiAntwort,kiBeschreibung,kiTitelChecks,beschrText,BESCHR_ENDE,KI_LIMIT};')();
+const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv,suchLink,suchLinkSauber,sucheName,sucheSauber,suchenMischen,deal,kaufUrteil,kaufNachricht,angebotText,angebotSauber,kaufListe,kaufTipp,kiKaufAntwort,kiMitte,preisAusText,kaufStaffel,kaufFrageApp,kiAntwortAusText,KAUF_JSON,ECHT,kiOrtOk,kiStandSauber,kiZaehler,kiAntwort,kiBeschreibung,kiTitelChecks,beschrText,BESCHR_ENDE,KI_LIMIT};')();
 let ok=0,fail=0;
 const eq=(name,a,b)=>{const s=JSON.stringify(a)===JSON.stringify(b);s?ok++:fail++;if(!s)console.log('FEHLER',name,'ist',a,'soll',b)};
 // Versandfrist 5 Werktage
@@ -161,6 +161,24 @@ eq('KI-Kauf-Antwort säubern',L.kiKaufAntwort({marke:' Venum ',verkauf_von:60,ve
 eq('KI-Kauf-Antwort nur ein Preis',[L.kiKaufAntwort({verkauf_bis:50}).von,L.kiKaufAntwort({verkauf_von:50,nachfrage:'egal'}).nachfrage],[50,'']);
 eq('KI-Kauf-Antwort leer',[L.kiKaufAntwort({einschaetzung:''}),L.kiKaufAntwort('x')],[null,null]);
 eq('Mitte der Schätzung',[L.kiMitte({von:45,bis:60}),L.kiMitte({von:0,bis:0})],[52.5,null]);
+// Version 7.1: Kauf-Check füllt sich selbst aus
+eq('Preis aus Text',L.preisAusText('Venum Gi A2\nSehr gut\n25,00 €\n27,95 €\nInklusive Käuferschutz\nVersand ab 3,49 €'),{preis:25,porto:3.49});
+eq('Preis mit Käuferschutz zuerst',L.preisAusText('26,95 €\n25,00 €'),{preis:25,porto:null});
+eq('Preis mit Zusatz in der Zeile',L.preisAusText('32,20 € inkl. Käuferschutz\nPreis: 30 €'),{preis:30,porto:null});
+eq('Neupreis zählt nicht',L.preisAusText('Neupreis 120 €, kaum getragen.\nPreis 45 €'),{preis:45,porto:null});
+eq('Versand in eigener Zeile',L.preisAusText('Versand ab\n4,29 €\n€18.50'),{preis:18.5,porto:4.29});
+eq('Tausender und Euro-Wort',[L.preisAusText('1.200,00 €').preis,L.preisAusText('Preis 40 Euro').preis],[1200,40]);
+eq('Kein Preis im Text',[L.preisAusText('Größe A2, 72 cm lang'),L.preisAusText(''),L.preisAusText(null)],[null,null,null]);
+const st=L.kaufStaffel({vk:50,portoEin:5});
+eq('Staffel ohne Kaufpreis',st,{max:32.5,handelnBis:43});
+eq('Staffel passt zum Urteil',[L.kaufUrteil({vk:50,portoEin:5,kauf:st.max}).urteil,L.kaufUrteil({vk:50,portoEin:5,kauf:st.handelnBis}).urteil,L.kaufUrteil({vk:50,portoEin:5,kauf:st.handelnBis+1}).urteil],['kaufen','handeln','lassen']);
+eq('Staffel ohne Verkaufspreis oder Gewinn',[L.kaufStaffel({}),L.kaufStaffel({vk:8})],[{max:0,handelnBis:0},{max:0,handelnBis:0}]);
+const fr=L.kaufFrageApp({was:'  Venum  Gi A2 ',preis:30,text:'Kaum getragen, schreib an lisa@web.de, https://insta.com/x'});
+eq('Frage für die Claude-App',[fr.includes(L.KAUF_JSON),fr.includes('Angebot: Venum Gi A2'),fr.includes('Preis: 30,00 €'),fr.includes('lisa@web.de'),fr.includes('insta.com'),fr.includes('[E-Mail]')],[true,true,true,false,false,true]);
+eq('Frage ohne Name und Preis',[L.kaufFrageApp({}).includes('(kein Name, siehe Foto)'),L.kaufFrageApp({}).includes('Preis: unbekannt')],[true,true]);
+const aw='Hier ist die Einschätzung:\n```json\n{"marke":"Venum","artikel":"Contender Gi","verkauf_von":35,"verkauf_bis":50,"nachfrage":"mittel","einschaetzung":"Lohnt sich.","echtheit":[],"fragen":["Maße?"],"risiken":[]}\n```';
+eq('Antwort aus der App lesen',[L.kiAntwortAusText(aw).bis,L.kiAntwortAusText(aw).marke,L.kiAntwortAusText(aw).fragen],[50,'Venum',['Maße?']]);
+eq('Antwort aus der App kaputt',[L.kiAntwortAusText('kein JSON'),L.kiAntwortAusText('{kaputt}'),L.kiAntwortAusText('{"titel":"x"}'),L.kiAntwortAusText(null)],[null,null,null,null]);
 // Phase 6: KI-Vorschlag
 eq('KI erlaubte Adressen',['https://antont10.github.io','http://localhost:8765','http://127.0.0.1:8766','https://evil.com','null','http://antont10.github.io','https://antont10.github.io.evil.com'].map(L.kiOrtOk),[true,true,true,false,false,false,false]);
 eq('KI Zähler aktueller Monat',L.kiZaehler({monat:'2026-10',n:7,limit:50},'2026-10-15'),{monat:'2026-10',n:7,limit:50,rest:43,bekannt:true});

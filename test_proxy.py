@@ -255,6 +255,18 @@ class KaufCheck(Basis):
         self.assertNotIn('lisa@web.de', teile[1]['text'])  # keine Kontaktdaten an die KI
         self.assertNotIn('1234', teile[1]['text'])
 
+    def test_kaufcheck_ohne_preis_und_namen(self):
+        self.modus('kauf')
+        st, d, _ = self.kauf({'text': 'Venum Gi A2, kaum getragen.'})
+        self.assertEqual(st, 200, d)
+        text = json.loads(self.log()['in'].strip())['message']['content'][-1]['text']
+        self.assertIn('Preis: unbekannt', text)
+        self.assertIn('kein Name', text)
+        self.assertIn('Venum Gi A2', text)
+        st, d, _ = self.kauf({'name': '', 'preis': None, 'bild': PNG})  # nur ein Foto
+        self.assertEqual(st, 200, d)
+        self.assertEqual(self.aufrufe(), 2)
+
     def test_vorschlag_bleibt_haiku_und_zaehler_gemeinsam(self):
         self.modus('kauf')
         self.kauf()
@@ -273,7 +285,7 @@ class KaufCheck(Basis):
         self.assertEqual(d['stand']['n'], 1)
 
     def test_ungueltige_kauf_eingaben(self):
-        for body in ({'name': 'Gi', 'text': ''}, {'name': 'Gi', 'preis': 0}, {'name': 'Gi', 'preis': -3}, {'name': 'Gi', 'preis': True},
+        for body in ({'name': '', 'text': ''}, {'name': '  ', 'text': '  ', 'bild': None}, {'name': 5, 'text': 'x'}, {'name': 'Gi', 'preis': 0}, {'name': 'Gi', 'preis': -3}, {'name': 'Gi', 'preis': True},
                      {'name': 'Gi', 'preis': '30'}, {'name': 'Gi', 'preis': 30, 'text': 5}, {'name': 'Gi', 'preis': 30, 'text': 'x' * 7000},
                      {'name': '', 'preis': 30}, {'name': 'Gi', 'preis': 30, 'bild': 'javascript:alert(1)'}):
             self.assertEqual(self.kauf(body)[0], 400, body)
@@ -281,7 +293,7 @@ class KaufCheck(Basis):
 
     def test_seite_kennt_kaufcheck(self):
         st, txt, _ = self.req('GET', '/ki')
-        self.assertIn('"v": 2', txt)
+        self.assertIn('"v": 3', txt)
         self.assertIn('claude-sonnet-5-5', txt)
         self.assertIn('/kaufcheck', txt)
 
@@ -439,6 +451,12 @@ class Hilfen(unittest.TestCase):
         finally:
             del os.environ['VINTED_KI_MODELL'], os.environ['VINTED_KI_LIMIT'], os.environ['VINTED_KI_MODELL_KAUF']
         self.assertEqual((k['modell'], k['limit'], k['modell_kauf']), ('claude-sonnet-5-5', 50, 'claude-haiku-5-5'))
+
+    def test_kauf_json_passt_zu_index_html(self):
+        html = open(os.path.join(HIER, 'index.html'), encoding='utf-8').read()
+        m = re.search(r"const KAUF_JSON='([^']*)'", html)
+        self.assertIsNotNone(m, 'KAUF_JSON fehlt in index.html')
+        self.assertIn(m.group(1), P.SYSTEM_KAUF)
 
     def test_origins_passen_zu_index_html(self):
         html = open(os.path.join(HIER, 'index.html'), encoding='utf-8').read()

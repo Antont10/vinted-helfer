@@ -1,6 +1,6 @@
 // Speichert die eigenen Dateien des Helfers, damit er auch ohne Netz startet.
 // Holt nur Dateien von der eigenen Adresse, nie etwas von Vinted oder anderen Seiten.
-const C='vinted-helfer-8';
+const C='vinted-helfer-9';
 const F=['./','index.html','manifest.webmanifest','icon-180.png','icon-192.png','icon-512.png'];
 // no-cache: beim Server nachfragen statt alte Kopien aus dem Browser-Zwischenspeicher zu nehmen
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(F.map(u=>new Request(u,{cache:'no-cache'})))))});
