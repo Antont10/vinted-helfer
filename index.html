@@ -46,6 +46,7 @@ input.datei{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
 .kurz{display:none}
 .bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin:8px 0}.bar i{display:block;height:100%}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+button:disabled{opacity:.5;cursor:not-allowed}
 table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:top}
 th{color:var(--mut);font-weight:500;font-size:12px}
@@ -111,7 +112,7 @@ p{margin:6px 0}
 <body>
 <div id="laden" role="status"><div class="kreis"></div>Lädt …</div>
 <h1>Vinted-Helfer</h1>
-<p class="sub">Läuft nur auf deinem Gerät. Nichts wird gesendet, kein Vinted-Login. Du kopierst Texte und klickst in Vinted selbst.</p>
+<p class="sub">Läuft nur auf deinem Gerät. Nichts wird gesendet, außer du tippst „KI-Vorschlag“ (dann gehen nur Foto und Name an Claude). Kein Vinted-Login. Du kopierst Texte und klickst in Vinted selbst.</p>
 
 <div class="tabs" id="tabs">
   <button data-t="heute" class="on">Heute</button>
@@ -144,6 +145,7 @@ p{margin:6px 0}
       <div><label>Eingestellt am</label><input id="n-datum" type="date"></div>
     </div>
     <div class="btns"><label class="s" for="n-foto">Foto</label><input type="file" id="n-foto" class="datei" accept="image/*"><img id="n-bild" class="thumb hide" alt=""><button class="s hide" id="n-bild-weg">Foto weg</button></div>
+    <div id="ki-n"></div>
     <p class="btns"><button class="p" id="add">Hinzufügen</button></p>
   </div>
   <div class="card">
@@ -461,7 +463,7 @@ function beschreibung(it){
   if(it.zustand)z.push('Zustand: '+it.zustand+'.');
   z.push(it.maengel?'Mängel: '+it.maengel+' (siehe Fotos).':'Keine Mängel bekannt.');
   if(it.masse)z.push('Maße: '+it.masse+'.');
-  z.push('Versand innerhalb von 1 bis 2 Tagen. Schau gern in meine anderen Artikel, bei mehreren Teilen gibt es Rabatt.');
+  z.push(BESCHR_ENDE);
   return z.join('\n');
 }
 // alte Daten (Phase 1) und Importe auf den neuen Stand bringen
@@ -554,9 +556,42 @@ const ECHT={
  technik:['Technik',['Seriennummer anfragen und beim Hersteller prüfen (Apple: checkcoverage.apple.com)','Video: Gerät eingeschaltet und funktioniert','Apple-Geräte: „Wo ist?“ und Aktivierungssperre aus','Akku-Zustand als Foto, wenn möglich','Original-Zubehör und Rechnung, wenn vorhanden','Gewicht und Verarbeitung: Fälschungen wirken oft leicht und billig','Käuferschutz kann bei Technik höher sein (bis 8 %), im Bezahlschritt prüfen']]
 };
 const ECHT_NACH=['Paket beim Öffnen filmen','Sofort prüfen und Probleme in Vinted melden, bevor du bestätigst (Frist laut Vinted 2 Tage, in der App prüfen)'];
+// Phase 6 KI-Vorschlag. Die Seite redet nur mit einem Fenster des Proxys am Mac (ki-proxy.py), nie mit Vinted.
+// An die KI gehen nur Artikelfoto und Artikelname. Safari lässt eine https-Seite nicht an http://127.0.0.1 heran,
+// darum öffnet der Helfer ein kleines Fenster des Proxys und schickt Frage und Antwort per postMessage.
+const KI_ORIGIN='http://127.0.0.1:8787';
+const KI_ORIGINS=['https://antont10.github.io','http://localhost:8765','http://127.0.0.1:8765','http://localhost:8766','http://127.0.0.1:8766'];
+const KI_LIMIT=100,KI_FOTO_PX=1024;
+const BESCHR_ENDE='Versand innerhalb von 1 bis 2 Tagen. Schau gern in meine anderen Artikel, bei mehreren Teilen gibt es Rabatt.';
+const kiOrtOk=o=>KI_ORIGINS.includes(o);
+// Zählerstand vom Proxy ({monat,n,limit}) prüfen. Maßgeblich ist der Proxy, die Seite zeigt nur den letzten Stand.
+function kiStandSauber(s){
+  return s&&typeof s==='object'&&/^\d{4}-\d{2}$/.test(s.monat)&&Number.isFinite(s.n)&&Number.isFinite(s.limit)&&s.limit>0
+    ?{monat:s.monat,n:Math.max(0,Math.round(s.n)),limit:Math.round(s.limit)}:null;
+}
+// Stand für den laufenden Monat: ein alter Monat zählt als 0
+function kiZaehler(z,ref){
+  const monat=(ref||today()).slice(0,7),s=kiStandSauber(z);
+  const n=s&&s.monat===monat?s.n:0,limit=s?s.limit:KI_LIMIT;
+  return {monat,n,limit,rest:Math.max(0,limit-n),bekannt:!!s};
+}
+// Antwort des Proxys prüfen und kürzen. null, wenn sie nicht brauchbar ist.
+function kiAntwort(a){
+  if(!a||typeof a!=='object')return null;
+  const t=(x,n)=>(typeof x==='string'?x:'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').replace(/\r/g,'').trim().slice(0,n);
+  const titel=t(a.titel,120).replace(/\s+/g,' '),beschreibung=t(a.beschreibung,2000);
+  if(!titel||!beschreibung)return null;
+  return {titel,beschreibung,fehlt:(Array.isArray(a.fehlt)?a.fehlt:[]).map(x=>t(x,80)).filter(Boolean).slice(0,8),stand:kiStandSauber(a.stand)};
+}
+// Die KI schreibt keinen Versand-Satz, der Schluss kommt aus dem Helfer (wie beim Baukasten-Text)
+const kiBeschreibung=text=>String(text||'').trim()+'\n'+BESCHR_ENDE;
+// Titel der KI mit denselben Text-Prüfungen wie der Baukasten (Länge, Großbuchstaben, „wie Marke“); Felder zählen als vorhanden
+const kiTitelChecks=t=>titelChecks({marke:'x',typ:'x',groesse:'x',farbe:'x'},t);
+// Eigene Beschreibung (von der KI übernommen) gewinnt gegen den Baukasten-Text
+const beschrText=it=>String(it.beschr||'').trim()?it.beschr:beschreibung(it);
 /* LOGIK-END */
 
-const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='5.0 vom 15.10.2026',BILD_PX=160;
+const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='6.0 vom 15.10.2026',BILD_PX=160;
 const ADRESSE='https://antont10.github.io/vinted-helfer/';
 const TABS=['heute','liste','angebote','rechner','einkauf','zahlen','daten'];
 let items=[],meta={},editId=null,filt='offen',relistId=null,relistWarn=false,stand=new Map(),nBild=null,db=null,dauerhaft=null;
@@ -593,15 +628,18 @@ async function bilderLaden(){
 const istBild=s=>typeof s==='string'&&/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s);
 function bildSetzen(id,url){id=String(id);url?bilder.set(id,url):bilder.delete(id);return dbTx(s=>url?s.put(url,id):s.delete(id))}
 function bildTag(it,k=''){const b=it&&bilder.get(String(it.id));return b?`<img class="thumb ${k}" src="${esc(b)}" alt="">`:''}
-// Foto auf 160 px lange Seite verkleinern, JPEG, ca. 5 bis 10 KB
+function skaliert(img,px,q){
+  const k=Math.min(1,px/Math.max(img.naturalWidth,img.naturalHeight)),c=document.createElement('canvas');
+  c.width=Math.max(1,Math.round(img.naturalWidth*k));c.height=Math.max(1,Math.round(img.naturalHeight*k));
+  const g=c.getContext('2d');g.imageSmoothingQuality='high';g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',q);
+}
+// klein: 160 px lange Seite, JPEG, ca. 5 bis 10 KB (wird gespeichert). gross: 1024 px nur für die KI, bleibt im Arbeitsspeicher.
 async function verkleinern(file){
   const url=URL.createObjectURL(file);
   try{
     const img=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=url});
-    const k=Math.min(1,BILD_PX/Math.max(img.naturalWidth,img.naturalHeight)),c=document.createElement('canvas');
-    c.width=Math.max(1,Math.round(img.naturalWidth*k));c.height=Math.max(1,Math.round(img.naturalHeight*k));
-    const g=c.getContext('2d');g.imageSmoothingQuality='high';g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);
-    return c.toDataURL('image/jpeg',0.7);
+    return {klein:skaliert(img,BILD_PX,0.7),gross:skaliert(img,KI_FOTO_PX,0.8)};
   }finally{URL.revokeObjectURL(url)}
 }
 async function fotoLesen(input){
@@ -740,8 +778,8 @@ $('#n-link').addEventListener('input',()=>{
   if(p.name&&!$('#n-name').value.trim())$('#n-name').value=p.name;
 });
 function zeigeBildNeu(){const on=!!nBild;$('#n-bild').classList.toggle('hide',!on);$('#n-bild-weg').classList.toggle('hide',!on);if(on)$('#n-bild').src=nBild;else $('#n-bild').removeAttribute('src')}
-$('#n-foto').addEventListener('change',async e=>{const u=await fotoLesen(e.target);if(u){nBild=u;zeigeBildNeu()}});
-$('#n-bild-weg').addEventListener('click',()=>{nBild=null;zeigeBildNeu()});
+$('#n-foto').addEventListener('change',async e=>{const f=await fotoLesen(e.target);if(f){nBild=f.klein;kiGrossSetzen('neu',f.gross);zeigeBildNeu();kiRender('n')}});
+$('#n-bild-weg').addEventListener('click',()=>{nBild=null;kiGrossSetzen('neu',null);zeigeBildNeu();kiRender('n')});
 $('#add').addEventListener('click',()=>{
   const name=$('#n-name').value.trim(),st=$('#n-status').value,preis=num($('#n-preis').value);
   const rawLink=$('#n-link').value.trim(),pl=linkAusText(rawLink);
@@ -753,6 +791,10 @@ $('#add').addEventListener('click',()=>{
   if(pl)it.link=pl.link;
   if(st==='eingestellt'){it.datum=$('#n-datum').value||today();it.gelistet=it.datum}
   if(nBild){bildSetzen(it.id,nBild);it.bildAm=Date.now();nBild=null;zeigeBildNeu()}
+  // KI-Foto und übernommene KI-Beschreibung gehören jetzt zum neuen Artikel
+  if(kiGross.has('neu')){kiGrossSetzen(String(it.id),kiGross.get('neu'));kiGrossSetzen('neu',null)}
+  if(kiS.n.beschr){it.beschr=kiS.n.beschr}
+  Object.assign(kiS.n,{erg:null,beschr:null,msg:''});
   items.push(it);save();['n-link','n-name','n-preis','n-min'].forEach(id=>$('#'+id).value='');$('#n-msg').textContent='';renderAll();
 });
 // Knopf „Link einfügen“: liest die Zwischenablage erst nach deinem Tipp. iOS zeigt dann die Blase „Einsetzen“.
@@ -792,6 +834,7 @@ function renderEdit(){
   <div class="grid">${fld('link','Vinted-Link','url','https://www.vinted.de/items/…')}${fld('name','Name')}${sel('status','Status',STATUS)}${fld('preis','Preis (€)','number')}${fld('min','Mindestpreis (€)','number')}${fld('ek','Einkaufspreis (€)','number')}${fld('datum','Eingestellt am','date')}${fld('gelistet','Zuletzt neu eingestellt','date')}${fld('minuten','Zeit gesamt (Min.)','int')}</div>
   <p id="e-link"></p>
   <div class="btns">${bildTag(it,'g')}<label class="s" for="e-foto">${bilder.has(String(it.id))?'Foto ändern':'Foto wählen'}</label><input type="file" id="e-foto" class="datei" accept="image/*">${bilder.has(String(it.id))?'<button class="s" data-e="bildweg">Foto entfernen</button>':''}</div>
+  <div id="ki-e"></div>
   <h3>Titel-Baukasten</h3>
   <div class="grid">${fld('marke','Marke','text','Nike')}${fld('typ','Typ','text','Hoodie')}${fld('farbe','Farbe','text','grau')}${fld('material','Material','text','Baumwolle')}${fld('groesse','Größe','text','M')}${sel('zustand','Zustand',[['','–'],...ZUSTAND.map(z=>[z,z])])}${fld('extra','Extra','text','Oversize, Vintage')}</div>
   <label style="margin-top:10px">Titel-Vorschlag</label><div class="out" id="e-titel"></div><ul class="chk" id="e-checks"></ul>
@@ -799,7 +842,7 @@ function renderEdit(){
   <h3>Beschreibung</h3>
   <div class="grid">${fld('maengel','Mängel (sonst leer)')}${fld('masse','Maße','text','Länge 70 cm')}</div>
   <textarea id="e-beschr" readonly style="margin-top:8px"></textarea>
-  <p><button class="s" data-e="bcopy">Beschreibung kopieren</button> <span class="muted" id="e-bmsg"></span></p>
+  <p><button class="s" data-e="bcopy">Beschreibung kopieren</button> <button class="s hide" data-e="bzurueck" id="e-bzurueck">Baukasten-Text statt KI-Text</button> <span class="muted" id="e-bmsg"></span></p>
   <h3>Foto-Checkliste <span class="muted" id="e-fstand"></span></h3>
   ${FOTOS.map(([k,l])=>`<label class="ck"><input type="checkbox" data-foto="${k}"${it.fotos[k]?' checked':''}> ${esc(l)}</label>`).join('')}
   <div class="grid" style="margin-top:8px">${fld('fotoN','Anzahl Fotos','int')}</div>
@@ -809,7 +852,7 @@ function renderEdit(){
   <div id="e-pc" style="margin-top:8px"></div>
   <h3>Interessenten</h3>
   <div id="e-int"></div>`;
-  updEdit();
+  updEdit();kiRender('e');
 }
 function updEdit(){
   const it=byId(editId);if(!it)return;
@@ -817,7 +860,8 @@ function updEdit(){
   const t=titel(it);
   $('#e-titel').textContent=t||'Felder ausfüllen, dann entsteht hier der Titel.';
   $('#e-checks').innerHTML=titelChecks(it,t).map(([c,x])=>`<li><span class="dot ${c}"></span>${esc(x)}</li>`).join('');
-  $('#e-beschr').value=beschreibung(it);
+  $('#e-beschr').value=beschrText(it);
+  $('#e-bzurueck').classList.toggle('hide',!String(it.beschr||'').trim());
   $('#e-fstand').textContent=`${fotoStand(it)} von ${FOTOS.length}`;
   const n=it.fotoN;
   $('#e-fhint').textContent=n==null?'Richtwert: 8 bis 12 Fotos. Das Titelbild zählt am meisten.':n<8?`${n} Fotos, eher wenig (Richtwert 8 bis 12).`:`${n} Fotos, passt.`;
@@ -842,7 +886,7 @@ $('#edit').addEventListener('input',e=>{
 });
 $('#edit').addEventListener('change',e=>{
   const el=e.target,it=byId(editId);if(!it)return;
-  if(el.id==='e-foto'){fotoLesen(el).then(u=>{if(!u)return;bildSetzen(it.id,u);it.bildAm=Date.now();save();renderEdit();renderAll()});return}
+  if(el.id==='e-foto'){fotoLesen(el).then(f=>{if(!f)return;bildSetzen(it.id,f.klein);kiGrossSetzen(it.id,f.gross);it.bildAm=Date.now();save();renderEdit();renderAll()});return}
   if(el.dataset.foto){it.fotos[el.dataset.foto]=el.checked;save();updEdit();renderAll();return}
   if(el.dataset.f==='status'){if(!setStatus(it,el.value))el.value=it.status;renderEdit();renderAll()}
 });
@@ -850,13 +894,126 @@ $('#edit').addEventListener('click',e=>{
   const a=e.target.dataset.e,it=byId(editId);if(!a||!it)return;
   if(a==='close'){closeEdit();return}
   if(a==='tcopy'){copy(titel(it),$('#e-tmsg'));return}
-  if(a==='bcopy'){copy(beschreibung(it),$('#e-bmsg'));return}
+  if(a==='bcopy'){copy(beschrText(it),$('#e-bmsg'));return}
+  if(a==='bzurueck')delete it.beschr;
   if(a==='tname'){const t=titel(it);if(t)it.name=t}
   if(a==='pcuse'){const pc=preisCheck(parsePreise(it.konk),it.preis);if(pc){it.preis=pc.vorschlag;if(it.status==='idee'||it.status==='foto')it.start=it.preis}}
   if(a==='int'){it.interessentAm=today();it.nachgefasst=false}
   if(a==='intok')it.nachgefasst=true;
   if(a==='bildweg'){bildSetzen(it.id,null);it.bildAm=Date.now()}
   save();renderEdit();renderAll();
+});
+
+// KI-Vorschlag (Phase 6): Knopf bei „Neuer Artikel“ (ort n) und beim Bearbeiten (ort e).
+// Foto und Name gehen über das Proxy-Fenster an Claude. Du übernimmst das Ergebnis selbst, nichts wird automatisch gespeichert.
+const kiGross=new Map(); // Foto in KI-Größe je Artikel ('neu' oder Artikel-ID), nur im Arbeitsspeicher, höchstens 3
+function kiGrossSetzen(key,url){key=String(key);kiGross.delete(key);if(url){kiGross.set(key,url);while(kiGross.size>3)kiGross.delete(kiGross.keys().next().value)}}
+const kiS={n:{erg:null,text:'',beschr:null,msg:'',info:'',busy:false},e:{erg:null,text:'',msg:'',info:'',busy:false,fuer:null}};
+// Grund, warum die KI hier nicht geht (dann ist der Knopf grau), sonst null
+function kiSperre(){
+  if(istIOS())return 'Am iPhone geht die KI nicht: Der Proxy läuft nur auf dem Mac. Titel am Mac erstellen und per Sicherung abgleichen.';
+  if(!kiOrtOk(location.origin))return 'Die KI geht nur auf antont10.github.io oder localhost'+(location.protocol==='file:'?', nicht in der Datei-Version.':'.');
+  return null;
+}
+function kiZaehlerText(){const z=kiZaehler(meta.ki);return z.bekannt?`Diesen Monat ${z.n} von ${z.limit} Vorschlägen (letzter Stand vom Proxy).`:`Höchstens ${z.limit} Vorschläge pro Monat. Der Zähler steht im Proxy.`}
+function kiHtml(ort){
+  const s=kiS[ort],it=ort==='e'?byId(editId):null;
+  if(ort==='e'&&!it)return '';
+  const id=ort==='n'?'neu':String(editId),sp=kiSperre(),z=kiZaehler(meta.ki);
+  const foto=kiGross.has(id)?'Foto aus dem Formular':ort==='e'&&bilder.has(id)?'nur das kleine Vorschaubild, ungenau (besser „Foto für die KI“ wählen)':'kein Foto, nur der Name';
+  const erg=s.erg&&(ort==='n'||s.fuer===id)?s.erg:null;
+  let h=`<h3>KI-Vorschlag</h3>
+  <p class="muted">Claude schreibt aus Foto und Name einen Titel und eine Beschreibung. Es gehen nur Foto und Name raus. Nichts wird gespeichert oder an Vinted geschickt, du übernimmst selbst.${sp?'':' Der KI-Proxy muss am Mac laufen (Doppelklick auf „ki-proxy-starten.command“ im Ordner vinted-helfer oder im Terminal <b>python3 ki-proxy.py</b>).'}</p>
+  <div class="btns"><button class="p" data-ki="start" data-ort="${ort}"${sp||s.busy?' disabled':''}>${s.busy?'Claude schreibt …':'KI-Vorschlag'}</button>
+  ${sp?'':`<label class="s" for="ki-foto-${ort}">Foto für die KI</label><input type="file" id="ki-foto-${ort}" class="datei" accept="image/*" data-ki="foto" data-ort="${ort}">`}
+  <span class="muted">${esc(foto)}</span></div>`;
+  if(sp)h+=`<p class="hint">${esc(sp)}</p>`;
+  else if(s.msg)h+=`<p class="hint">${esc(s.msg)}</p>`;
+  h+=`<p class="muted">${esc(kiZaehlerText())}${z.bekannt&&z.rest===0?' Laut letzter Meldung ist die Grenze erreicht, der Proxy entscheidet.':''}</p>`;
+  if(erg){
+    const b=(a,l,k='s')=>`<button class="${k}" data-ki="${a}" data-ort="${ort}">${l}</button>`;
+    h+=`<label style="margin-top:10px">Titel (${erg.titel.length} Zeichen)</label><div class="out">${esc(erg.titel)}</div>
+    <ul class="chk">${kiTitelChecks(erg.titel).map(([c,x])=>`<li><span class="dot ${c}"></span>${esc(x)}</li>`).join('')}</ul>
+    <label>Beschreibung (hier kannst du noch ändern)</label><textarea data-ki="text" data-ort="${ort}" style="min-height:140px">${esc(s.text)}</textarea>
+    ${erg.fehlt.length?`<p class="hint">Prüf noch: ${esc(erg.fehlt.join(', '))}.</p>`:''}
+    <div class="btns">${b('titel','Titel übernehmen','p')}${b('beschr','Beschreibung übernehmen','p')}${b('tcopy','Titel kopieren')}${b('bcopy','Beschreibung kopieren')}${b('weg','Verwerfen','s warn')}</div>
+    <p class="muted" id="ki-msg-${ort}">${esc(s.info)}</p>`;
+  }
+  return h;
+}
+function kiRender(ort){const el=$('#ki-'+ort);if(el)el.innerHTML=kiHtml(ort)}
+function kiStandMerken(stand){const st=kiStandSauber(stand);if(st){meta.ki=st;save()}}
+// Fenster des Proxys fragen. Der Proxy-Teil läuft in dem Fenster, hier nur Nachrichten hin und her.
+function kiFrage(w,name,bild){
+  return new Promise((ok,no)=>{
+    const id=Date.now()+'-'+Math.random().toString(36).slice(2,8),t0=Date.now();
+    let fertig=false,angenommen=false,zuSeit=0;
+    const ende=(f,v)=>{if(fertig)return;fertig=true;clearInterval(iv);removeEventListener('message',hoer);try{w.close()}catch(e){}f(v)};
+    // nur Nachrichten von genau diesem Fenster und genau dieser Adresse
+    const hoer=e=>{
+      const d=e.data;
+      if(e.origin!==KI_ORIGIN||e.source!==w||!d||d.id!==id)return;
+      if(d.typ==='angenommen')angenommen=true;
+      else if(d.typ==='antwort')ende(ok,d);
+      else if(d.typ==='fehler')ende(no,Object.assign(new Error(String(d.text||'Fehler')),{stand:d.stand}));
+    };
+    addEventListener('message',hoer);
+    // Das Fenster lädt erst. Darum wird die Frage wiederholt, bis es sie annimmt (zu früh gesendete Nachrichten verwirft der Browser).
+    const iv=setInterval(()=>{
+      if(w.closed){
+        if(!zuSeit)zuSeit=Date.now();
+        if(Date.now()-zuSeit>800)ende(no,new Error(angenommen?'Das Fenster wurde geschlossen, bevor der Vorschlag fertig war.':'Das KI-Fenster wurde geschlossen.'));
+        return;
+      }
+      if(!angenommen){
+        if(Date.now()-t0>4500)return ende(no,new Error('Der KI-Proxy antwortet nicht. Starte ihn am Mac (Doppelklick auf „ki-proxy-starten.command“ im Ordner vinted-helfer, oder im Terminal „python3 ki-proxy.py“) und tippe nochmal.'));
+        if(Date.now()-t0>500)try{w.postMessage({typ:'frage',id,name,bild},KI_ORIGIN)}catch(e){}
+      }else if(Date.now()-t0>150000)ende(no,new Error('Das hat zu lange gedauert. Später nochmal versuchen.'));
+    },300);
+  });
+}
+async function kiStarten(ort){
+  const s=kiS[ort];if(s.busy||kiSperre())return;
+  const it=ort==='e'?byId(editId):null,name=String(ort==='n'?$('#n-name').value:it&&it.name||'').trim();
+  if(!name){s.msg='Bitte erst einen Namen eintragen.';kiRender(ort);return}
+  const id=ort==='n'?'neu':String(editId),bild=kiGross.get(id)||(ort==='e'?bilder.get(id):null)||null;
+  // Das Fenster muss direkt im Klick geöffnet werden, sonst blockt der Browser es
+  const w=window.open(KI_ORIGIN+'/ki','vinted-ki','popup=yes,width=440,height=280');
+  if(!w){s.msg='Der Browser hat das Fenster blockiert. Erlaube Pop-ups für diese Seite und tippe nochmal.';kiRender(ort);return}
+  Object.assign(s,{busy:true,msg:'',info:''});kiRender(ort);
+  try{
+    const d=await kiFrage(w,name,bild),a=kiAntwort(d);
+    if(!a)throw new Error('Die Antwort war nicht lesbar. Nochmal versuchen.');
+    kiStandMerken(a.stand);
+    Object.assign(s,{erg:a,text:kiBeschreibung(a.beschreibung),fuer:ort==='e'?id:null});
+  }catch(e){s.msg=e&&e.message||'Das hat nicht geklappt.';if(e&&e.stand)kiStandMerken(e.stand)}
+  finally{s.busy=false;kiRender(ort)}
+}
+$('#t-liste').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-ki]');if(!b)return;
+  const ort=b.dataset.ort,a=b.dataset.ki,s=kiS[ort],it=ort==='e'?byId(editId):null,erg=s.erg;
+  if(a==='start'){kiStarten(ort);return}
+  if(!erg)return;
+  s.info='';
+  if(a==='tcopy'||a==='bcopy'){copy(a==='tcopy'?erg.titel:s.text,$('#ki-msg-'+ort));return}
+  if(a==='weg')Object.assign(s,{erg:null,text:'',info:'',msg:''});
+  if(a==='titel'){
+    if(ort==='n'){$('#n-name').value=erg.titel;s.info='Der Titel steht jetzt im Feld „Name“.'}
+    else if(it){it.name=erg.titel;save();s.info='Als Name übernommen.';renderEdit();renderAll();return}
+  }
+  if(a==='beschr'){
+    const t=s.text.trim();
+    if(!t)s.info='Die Beschreibung ist leer.';
+    else if(ort==='n'){s.beschr=t;s.info='Wird mit dem Artikel gespeichert, wenn du „Hinzufügen“ tippst.'}
+    else if(it){it.beschr=t;save();s.info='Übernommen. Sie steht unten unter „Beschreibung“.';updEdit();renderListe()}
+  }
+  kiRender(ort);
+});
+$('#t-liste').addEventListener('input',e=>{const el=e.target;if(el.dataset.ki==='text')kiS[el.dataset.ort].text=el.value});
+$('#t-liste').addEventListener('change',e=>{
+  const el=e.target;if(el.dataset.ki!=='foto')return;
+  const ort=el.dataset.ort;
+  fotoLesen(el).then(f=>{if(!f)return;kiGrossSetzen(ort==='n'?'neu':editId,f.gross);kiS[ort].msg='';kiRender(ort)});
 });
 
 // Angebotstexte
@@ -1052,6 +1209,7 @@ function renderDaten(){
     +z('Speicher dauerhaft',dauerhaft===true?'ja':dauerhaft===false?'nein, der Browser entscheidet. Deshalb regelmäßig sichern.':'unbekannt')
     +z('Bilder',db?'auf dem Gerät gespeichert':'nur bis zum Schließen (dieser Browser erlaubt hier keinen Bild-Speicher)')
     +z('Offline','serviceWorker' in navigator&&navigator.serviceWorker.controller?'bereit':'nicht aktiv')
+    +z('KI-Vorschlag',esc(kiSperre()||kiZaehlerText()))
     +z('Version',VERSION);
 }
 // Sicherung Version 4: Artikel, Bilder, Lösch-Vermerke und gespeicherte Suchen
@@ -1111,7 +1269,7 @@ function importieren(e,modus){
 $('#imp-merge').addEventListener('change',e=>importieren(e,'zusammen'));
 $('#imp-replace').addEventListener('change',e=>importieren(e,'ersetzen'));
 
-function renderAll(){renderHeute();renderListe();renderAngebote();renderRechner();renderEinkauf();renderZahlen();renderDaten()}
+function renderAll(){renderHeute();renderListe();renderAngebote();renderRechner();renderEinkauf();renderZahlen();renderDaten();kiRender('n')}
 // Reserve: index.html#link=<geteilter Text> füllt das Formular (z. B. für einen Kurzbefehl).
 // Der Teil hinter # geht an keinen Server, der Helfer ruft den Link nicht ab.
 function ausHash(){

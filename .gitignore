@@ -7,3 +7,4 @@ CLAUDE.md
 START-PROMPT.md
 *.json
 !manifest.webmanifest
+__pycache__/

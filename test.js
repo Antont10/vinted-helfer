@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');
 const code=html.split('/* LOGIK-START')[1].split('/* LOGIK-END */')[0].replace(/^[^\n]*\n/,'');
-const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv,suchLink,sucheSauber,suchenMischen,deal,ECHT};')();
+const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv,suchLink,sucheSauber,suchenMischen,deal,ECHT,kiOrtOk,kiStandSauber,kiZaehler,kiAntwort,kiBeschreibung,kiTitelChecks,beschrText,BESCHR_ENDE,KI_LIMIT};')();
 let ok=0,fail=0;
 const eq=(name,a,b)=>{const s=JSON.stringify(a)===JSON.stringify(b);s?ok++:fail++;if(!s)console.log('FEHLER',name,'ist',a,'soll',b)};
 // Versandfrist 5 Werktage
@@ -118,4 +118,23 @@ const sm=L.suchenMischen({suchen:[{id:'1',marke:'A',geaendert:5},{id:'2',marke:'
 eq('Suchen zusammenführen',[sm.suchen.map(s=>s.marke),sm.weg],[['A neu','C'],{'2':7}]);
 eq('Lösch-Vermerk älter als Änderung',L.suchenMischen({suchen:[{id:'1',geaendert:9}],weg:{}},{suchen:[],weg:{'1':3}}).suchen.length,1);
 eq('Checklisten',Object.keys(L.ECHT),['kampfsport','kleidung','sneaker','technik']);
+// Phase 6: KI-Vorschlag
+eq('KI erlaubte Adressen',['https://antont10.github.io','http://localhost:8765','http://127.0.0.1:8766','https://evil.com','null','http://antont10.github.io','https://antont10.github.io.evil.com'].map(L.kiOrtOk),[true,true,true,false,false,false,false]);
+eq('KI Zähler aktueller Monat',L.kiZaehler({monat:'2026-10',n:7,limit:50},'2026-10-15'),{monat:'2026-10',n:7,limit:50,rest:43,bekannt:true});
+eq('KI Zähler neuer Monat beginnt bei 0',L.kiZaehler({monat:'2026-09',n:99,limit:100},'2026-10-01'),{monat:'2026-10',n:0,limit:100,rest:100,bekannt:true});
+eq('KI Zähler unbekannt: Standard 100',L.kiZaehler(null,'2026-10-15'),{monat:'2026-10',n:0,limit:100,rest:100,bekannt:false});
+eq('KI Zähler über der Grenze',L.kiZaehler({monat:'2026-10',n:120,limit:100},'2026-10-15').rest,0);
+eq('KI Stand prüfen',[L.kiStandSauber({monat:'x',n:1,limit:5}),L.kiStandSauber({monat:'2026-10',n:1,limit:0}),L.kiStandSauber({monat:'2026-10',n:'1',limit:5}),L.kiStandSauber({monat:'2026-10',n:-3,limit:5})],[null,null,null,{monat:'2026-10',n:0,limit:5}]);
+const ka=L.kiAntwort({titel:'  Nike   Hoodie grau Gr. M ',beschreibung:'Zeile 1\r\nZeile\u0007 2 ',fehlt:['Größe','',5,'Material'],stand:{monat:'2026-10',n:3,limit:100},extra:'ignoriert'});
+eq('KI Antwort säubern',ka,{titel:'Nike Hoodie grau Gr. M',beschreibung:'Zeile 1\nZeile 2',fehlt:['Größe','Material'],stand:{monat:'2026-10',n:3,limit:100}});
+eq('KI Antwort ohne Titel oder Text',[L.kiAntwort({titel:'',beschreibung:'x'}),L.kiAntwort({titel:'x'}),L.kiAntwort('text'),L.kiAntwort(null),L.kiAntwort({titel:5,beschreibung:6})],[null,null,null,null,null]);
+eq('KI Antwort kürzt',[L.kiAntwort({titel:'a'.repeat(300),beschreibung:'b'.repeat(5000)}).titel.length,L.kiAntwort({titel:'a',beschreibung:'b'.repeat(5000)}).beschreibung.length,L.kiAntwort({titel:'a',beschreibung:'b',fehlt:Array(20).fill('x')}).fehlt.length],[120,2000,8]);
+eq('KI Beschreibung bekommt den Versand-Schluss',L.kiBeschreibung(' Zeile 1 '),'Zeile 1\n'+L.BESCHR_ENDE);
+eq('Baukasten-Text endet gleich',L.beschreibung({typ:'Gi'}).endsWith(L.BESCHR_ENDE),true);
+eq('KI-Titel gut',L.kiTitelChecks('Nike Hoodie grau Gr. M neu mit Etikett').map(c=>c[0]),['g']);
+eq('KI-Titel Großbuchstaben und zu lang',[L.kiTitelChecks('NIKE HOODIE grau Gr. M').some(c=>c[0]==='y'),L.kiTitelChecks('Polo Ralph Lauren Zip-Hoodie Tie-Dye Pony navy Kindergröße Gr. XL sehr gut erhalten').some(c=>/Zeichen/.test(c[1]))],[true,true]);
+eq('KI-Titel fremde Marke',L.kiTitelChecks('Hoodie wie Nike Gr. M').some(c=>c[0]==='r'),true);
+eq('eigene Beschreibung gewinnt',[L.beschrText({typ:'Hoodie',beschr:'Eigener Text'}),L.beschrText({marke:'Nike',typ:'Hoodie',beschr:'  '}).startsWith('Nike Hoodie')],['Eigener Text',true]);
+eq('Beschreibung bleibt beim Import',L.migrate([{id:1,name:'a',beschr:'Text'}])[0].beschr,'Text');
+eq('Standard-Grenze 100',L.KI_LIMIT,100);
 console.log(`${ok} ok, ${fail} Fehler`);process.exit(fail?1:0);
