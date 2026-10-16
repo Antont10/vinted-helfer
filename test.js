@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'index.html'),'utf8');
 const code=html.split('/* LOGIK-START')[1].split('/* LOGIK-END */')[0].replace(/^[^\n]*\n/,'');
-const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv,suchLink,suchLinkSauber,sucheName,sucheSauber,suchenMischen,deal,kaufUrteil,kaufNachricht,angebotText,angebotSauber,kaufListe,kaufTipp,kiKaufAntwort,kiMitte,preisAusText,kaufStaffel,kaufFrageApp,kiAntwortAusText,KAUF_JSON,ECHT,kiOrtOk,kiStandSauber,kiZaehler,kiAntwort,kiBeschreibung,kiTitelChecks,beschrText,BESCHR_ENDE,KI_LIMIT};')();
+const L=new Function(code+';return {addWerktage,werktageBis,vorschlag,angebotPreis,ageDays,parsePreise,preisCheck,buendel,titel,titelChecks,beschreibung,migrate,heute,round05,parseLink,linkAusText,zusammenfuehren,groesse,jahr,kategorie,markeVon,gruppen,proStunde,csv,suchLink,suchLinkSauber,sucheName,sucheSauber,suchenMischen,deal,kaufUrteil,kaufNachricht,angebotText,angebotSauber,kaufListe,kaufTipp,kiKaufAntwort,kiMitte,preisAusText,kaufStaffel,kaufFrageApp,kiAntwortAusText,KAUF_JSON,ECHT,kiOrtOk,kiStandSauber,kiZaehler,kiAntwort,kiBeschreibung,kiTitelChecks,beschrText,BESCHR_ENDE,KI_LIMIT,trendSauber,trendTag,trendAlter,trendNeuer,trendName,trendMarken,trendListe,trendMax,trendTipp,trendSuche,trendAntwort,TREND_PORTO};')();
 let ok=0,fail=0;
 const eq=(name,a,b)=>{const s=JSON.stringify(a)===JSON.stringify(b);s?ok++:fail++;if(!s)console.log('FEHLER',name,'ist',a,'soll',b)};
 // Versandfrist 5 Werktage
@@ -198,4 +198,44 @@ eq('KI-Titel fremde Marke',L.kiTitelChecks('Hoodie wie Nike Gr. M').some(c=>c[0]
 eq('eigene Beschreibung gewinnt',[L.beschrText({typ:'Hoodie',beschr:'Eigener Text'}),L.beschrText({marke:'Nike',typ:'Hoodie',beschr:'  '}).startsWith('Nike Hoodie')],['Eigener Text',true]);
 eq('Beschreibung bleibt beim Import',L.migrate([{id:1,name:'a',beschr:'Text'}])[0].beschr,'Text');
 eq('Standard-Grenze 100',L.KI_LIMIT,100);
+// Phase 8: Trends vom KI-Proxy
+const Z=Date.UTC(2026,9,16,9,0);
+const TR={zeit:Z,modell:'claude-sonnet-5-5',einkauf:[
+  {was:'Carhartt Detroit Jacket',marke:'Carhartt',suche:'Carhartt Detroit Jacket',warum:'Workwear ist gefragt.',verkauf_von:60,verkauf_bis:90,tempo:'mittel',nische:false},
+  {was:'Stanley Becher',marke:'Stanley',suche:'Stanley Quencher',verkauf_von:15,verkauf_bis:20,tempo:'schnell'},
+  {was:'Tech Fleece Hoodie',marke:'Nike',suche:'Nike Tech Fleece',verkauf_von:40,verkauf_bis:60,tempo:'schnell',nische:false},
+  {was:'Venum Contender Gi',marke:'Venum',suche:'Venum Contender Gi',warum:'Neue Kurse.',verkauf_von:55,verkauf_bis:35,tempo:'schnell',nische:true},
+  {was:'Vase',tempo:'langsam'}],
+  einstellen:[{was:'Daunenjacken',tempo:'schnell'},{was:'Gis',tempo:'mittel',nische:true}],
+  quellen:[{titel:'Vinted',url:'https://www.vinted.de/press'},{titel:'x',url:'javascript:alert(1)'},{url:'https://e.de/<b>'},{url:'http://e.de'}]};
+const ts=L.trendSauber(TR);
+eq('Trends säubern',[ts.einkauf.length,ts.einkauf.map(e=>e.tempo),ts.quellen,ts.einkauf[1].nische,ts.einkauf[3].verkauf_von,ts.einstellen.length],[4,['mittel','schnell','schnell','schnell'],[{titel:'Vinted',url:'https://www.vinted.de/press'}],false,35,2]);
+eq('Trends ohne Zeit oder Inhalt',[L.trendSauber({...TR,zeit:'gestern'}),L.trendSauber({...TR,zeit:5}),L.trendSauber({zeit:Z,einkauf:[{was:'Vase',tempo:'langsam'}]}),L.trendSauber(null)],[null,null,null,null]);
+eq('Trends: Zahl als Text oder Wahrheitswert zählt nicht',L.trendSauber({zeit:Z,einkauf:[{was:'X',verkauf_von:'30',verkauf_bis:true}]}).einkauf[0],{was:'X',marke:'',suche:'X',warum:'',verkauf_von:0,verkauf_bis:0,tempo:'mittel',nische:false});
+eq('Trends kürzen',[L.trendSauber({zeit:Z,einkauf:Array(12).fill({was:'a'.repeat(200)})}).einkauf.length,L.trendSauber({zeit:Z,einkauf:[{was:'a'.repeat(200)}]}).einkauf[0].was.length],[8,80]);
+eq('Trend-Alter',[L.trendTag(ts),L.trendAlter(ts,'2026-10-23')],['2026-10-16',7]);
+const meine=[{name:'Nike Center Swoosh Sweatshirt creme M'},{name:'Uniqlo Blocktech Regenjacke'}];
+eq('Marken aus meinen Artikeln',L.trendMarken(meine).includes('nike'),true);
+eq('Trends: schnell zuerst, darin Nische und eigene Marke',L.trendListe(ts.einkauf,meine).map(e=>[e.marke,e.passt]),[['Nike',true],['Venum',true],['Stanley',false],['Carhartt',false]]);
+eq('Trends ohne eigene Artikel',L.trendListe(ts.einkauf,[]).map(e=>e.marke),['Venum','Stanley','Nike','Carhartt']);
+eq('Trend merkt sich Claudes Stelle',L.trendListe(ts.einkauf,[]).map(e=>e.i),[3,1,2,0]);
+eq('Trend-Name ohne doppelte Marke',[L.trendName(ts.einkauf[2]),L.trendName(ts.einkauf[3])],['Nike Tech Fleece Hoodie','Venum Contender Gi']);
+eq('Trend-Höchstpreis wie im Kauf-Check',[L.trendMax(ts.einkauf[3]),L.TREND_PORTO],[{vk:45,max:27.5,handelnBis:36.5},5]);
+eq('Trend-Höchstpreis ohne Preis',L.trendMax({verkauf_von:0,verkauf_bis:0}),{vk:null,max:0,handelnBis:0});
+eq('Trend-Tipp',[L.trendTipp(L.trendListe(ts.einkauf,[])).e.marke,L.trendTipp(L.trendListe(ts.einkauf,[])).max],['Venum',27.5]);
+eq('Trend-Tipp ohne Gewinn',[L.trendTipp([{verkauf_von:10,verkauf_bis:12}]),L.trendTipp([])],[null,null]);
+eq('Trend-Tipp nie mit Mini-Höchstpreis',[L.trendMax(ts.einkauf[1]).max,L.trendTipp([ts.einkauf[1]])],[1.5,null]);
+eq('Suche aus Trend',[L.trendSuche(ts.einkauf[3]),L.trendSuche({marke:'Nike',suche:'Tech Fleece Nike'}).marke,L.trendSuche({marke:'Stanley',suche:'Quencher Becher'}).marke,L.trendSuche({was:'Gi'}).typ],
+  [{marke:'Venum',typ:'Contender Gi',groesse:'',max:27.5},'','Stanley','Gi']);
+eq('Suche aus Trend öffnet Vinted mit Höchstpreis',L.suchLink(L.trendSuche(ts.einkauf[3])),'https://www.vinted.de/catalog?search_text=Venum+Contender+Gi&order=newest_first&price_to=27.5&currency=EUR');
+const alt={...TR,zeit:Z-8*864e5};
+eq('Neuere Trends gewinnen',[L.trendNeuer(alt,TR).zeit,L.trendNeuer(TR,alt).zeit,L.trendNeuer(null,TR).zeit,L.trendNeuer(TR,{kaputt:1}).zeit,L.trendNeuer(null,null)],[Z,Z,Z,Z,null]);
+const ta=L.trendAntwort(null,{trends:TR,laeuft:false});
+eq('Trends geholt',[ta.trends.zeit,ta.msg],[Z,'Neue Trends vom 16.10.']);
+eq('Trends: nichts Neueres',[L.trendAntwort(TR,{trends:TR}).msg.startsWith('Keine neueren Trends'),L.trendAntwort(TR,{trends:TR}).msg.includes('ab 23.10.')],[true,true]);
+eq('Trends: Recherche läuft',[L.trendAntwort(TR,{trends:null,laeuft:true}).msg.startsWith('Claude recherchiert noch'),L.trendAntwort(TR,{laeuft:true}).trends.zeit],[true,Z]);
+eq('Trends: Fehler, alter Stand bleibt',[L.trendAntwort(TR,{letzter_fehler:'Claude ist nicht angemeldet.'}).msg.includes('nicht angemeldet'),L.trendAntwort(TR,{letzter_fehler:'x'}).msg.includes('alten Stand'),L.trendAntwort(TR,{letzter_fehler:'x'}).trends.zeit],[true,true,Z]);
+eq('Trends: noch nichts da',L.trendAntwort(null,{}).msg,'Noch keine Trends. Tipp in ein paar Minuten nochmal.');
+const htr=(m,ref,o)=>L.heute([],m,ref,o).filter(t=>t.typ==='trends').length;
+eq('Heute erinnert an die Trends',[htr({},'2026-10-16',{trends:true}),htr({trends:TR},'2026-10-22',{trends:true}),htr({trends:TR},'2026-10-23',{trends:true}),htr({},'2026-10-16'),htr({},'2026-10-16',{trends:false})],[1,0,1,0,0]);
 console.log(`${ok} ok, ${fail} Fehler`);process.exit(fail?1:0);

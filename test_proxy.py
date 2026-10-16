@@ -21,8 +21,12 @@ except Exception:
 json.dump({'args': sys.argv[1:], 'env': dict(os.environ), 'in': inp, 'cwd': os.getcwd(), 'aufrufe': n + 1}, open(os.path.join(d, 'log.json'), 'w'))
 OK = '{"titel":"Nike Hoodie grau Gr. M","beschreibung":"Nike Hoodie in Grau, Größe M.\\\\nSehr gut erhalten.","fehlt":["Mängel prüfen"]}'
 KAUF = '{"marke":"Venum","artikel":"Contender Gi","verkauf_von":45,"verkauf_bis":60,"nachfrage":"mittel","einschaetzung":"Gefragte Marke, der Preis passt.","echtheit":["Patch gestickt"],"fragen":["Maße?"],"risiken":["Größe unklar"]}'
+TREND = '{"einkauf":[{"was":"Carhartt Detroit Jacket","marke":"Carhartt","suche":"Carhartt Detroit Jacket","warum":"Workwear ist gefragt.","verkauf_von":60,"verkauf_bis":90,"tempo":"schnell","nische":false},{"was":"Venum Contender Gi","marke":"Venum","suche":"Venum Contender Gi","warum":"Neue Kurse im Herbst.","verkauf_von":35,"verkauf_bis":55,"tempo":"mittel","nische":true},{"was":"Alte Vase","tempo":"langsam"}],"einstellen":[{"was":"Daunenjacken von The North Face","warum":"Es wird kalt.","tempo":"schnell"}],"quellen":[{"titel":"Vinted Trends","url":"https://www.vinted.de/press"},{"titel":"Boese","url":"javascript:alert(1)"}]}'
 if modus == 'kauf':
     print(json.dumps({'type': 'result', 'is_error': False, 'result': KAUF}))
+elif modus == 'trend':
+    print(json.dumps({'type': 'system'}))
+    print(json.dumps({'type': 'result', 'is_error': False, 'result': 'Hier die Trends: ' + TREND}))
 elif modus == 'ok':
     print(json.dumps({'type': 'system'}))
     print(json.dumps({'type': 'result', 'is_error': False, 'result': OK}))
@@ -62,6 +66,7 @@ class Basis(unittest.TestCase):
         os.chmod(self.stub, os.stat(self.stub).st_mode | stat.S_IXUSR)
         self.modus('ok')
         P.ZAEHLER_DATEI = os.path.join(self.dir, 'zaehler.json')
+        P.TRENDS_DATEI = os.path.join(self.dir, 'trends.json')
         k = P.konfig()
         k.update(port=0, limit=self.limit, timeout=self.timeout)
         self.k = k
@@ -293,9 +298,133 @@ class KaufCheck(Basis):
 
     def test_seite_kennt_kaufcheck(self):
         st, txt, _ = self.req('GET', '/ki')
-        self.assertIn('"v": 3', txt)
+        self.assertIn('"v": 4', txt)
         self.assertIn('claude-sonnet-5-5', txt)
         self.assertIn('/kaufcheck', txt)
+        self.assertIn('/trends', txt)
+
+
+class Trend(Basis):
+    def trends(self, body=None, **kw):
+        return self.req('POST', '/trends', {} if body is None else body, **kw)
+
+    def warten(self):
+        for _ in range(200):
+            if not self.s.trends.laeuft:
+                return
+            time.sleep(0.05)
+        self.fail('Die Recherche hört nicht auf')
+
+    def test_recherche_nur_mit_websuche(self):
+        self.modus('trend')
+        self.assertTrue(self.s.trends.starten(warten=True))
+        a = self.log()['args']
+        self.assertEqual(a[a.index('--tools') + 1], 'WebSearch')
+        self.assertEqual(a[a.index('--allowedTools') + 1], 'WebSearch')
+        self.assertIn('--restricted', a)
+        self.assertNotIn('WebFetch', ' '.join(a))
+        self.assertEqual(a[a.index('--model') + 1], 'claude-sonnet-5-5')
+        prompt = a[a.index('--system-prompt') + 1]
+        self.assertIn('Kampfsport', prompt)
+        self.assertNotIn('__NISCHEN__', prompt)
+        self.assertIn('Heute ist der', self.log()['in'])
+        self.assertNotIn('ANTHROPIC_API_KEY', self.log()['env'])
+        t = self.s.trends.lesen()
+        self.assertEqual([e['was'] for e in t['einkauf']], ['Carhartt Detroit Jacket', 'Venum Contender Gi'])
+        self.assertTrue(t['einkauf'][1]['nische'])
+        self.assertEqual(t['quellen'], [{'titel': 'Vinted Trends', 'url': 'https://www.vinted.de/press'}])
+        self.assertEqual(t['modell'], 'claude-sonnet-5-5')
+        self.assertEqual(self.s.zaehler.stand()['n'], 1)
+
+    def test_erste_recherche_startet_von_selbst(self):
+        self.modus('trend')
+        st, d, _ = self.trends()
+        self.assertEqual(st, 200)
+        self.assertTrue(d['laeuft'] or d['trends'])
+        self.warten()
+        st, d, _ = self.trends()
+        self.assertFalse(d['laeuft'])
+        self.assertEqual(d['trends']['einstellen'][0]['tempo'], 'schnell')
+        self.assertIsInstance(d['trends']['zeit'], int)
+        self.assertEqual((d['stand']['n'], self.aufrufe()), (1, 1))
+
+    def test_frische_trends_nur_mit_neu(self):
+        self.modus('trend')
+        self.s.trends.starten(warten=True)
+        self.s.trends.versuch = 0
+        self.assertFalse(self.s.trends.faellig())
+        self.trends()
+        self.warten()
+        self.assertEqual(self.aufrufe(), 1)
+        self.trends({'neu': True})
+        self.warten()
+        self.assertEqual((self.aufrufe(), self.s.zaehler.stand()['n']), (2, 2))
+
+    def test_faellig_nach_trend_tagen_und_pause(self):
+        self.modus('trend')
+        tr = self.s.trends
+        self.assertTrue(tr.faellig())
+        tr.starten(warten=True)
+        jetzt = time.time()
+        self.assertFalse(tr.faellig(jetzt + 3600))
+        self.assertFalse(tr.faellig(jetzt + 6 * 86400))
+        self.assertTrue(tr.faellig(jetzt + 7 * 86400 + 60))
+        tr.k['trend_auto'] = False
+        self.assertFalse(tr.faellig(jetzt + 30 * 86400))
+
+    def test_fehler_zaehlt_nicht_und_wartet(self):
+        self.modus('login')
+        self.s.trends.starten(warten=True)
+        self.assertIn('nicht angemeldet', self.s.trends.fehler)
+        self.assertEqual(self.s.zaehler.stand()['n'], 0)
+        st, d, _ = self.trends()
+        self.assertIn('nicht angemeldet', d['letzter_fehler'])
+        self.assertIsNone(d['trends'])
+        self.assertEqual(self.aufrufe(), 1)
+
+    def test_unlesbare_antwort_zaehlt(self):
+        self.modus('kaputt')
+        self.s.trends.starten(warten=True)
+        self.assertIn('nicht lesbar', self.s.trends.fehler)
+        self.assertEqual(self.s.zaehler.stand()['n'], 1)
+        self.assertIsNone(self.s.trends.lesen())
+
+    def test_alte_trends_bleiben_bei_fehler(self):
+        self.modus('trend')
+        self.s.trends.starten(warten=True)
+        self.modus('absturz')
+        self.trends({'neu': True})
+        self.warten()
+        st, d, _ = self.trends()
+        self.assertEqual(len(d['trends']['einkauf']), 2)
+        self.assertTrue(d['letzter_fehler'])
+
+    def test_zeitgrenze(self):
+        self.k['timeout_trend'] = 1
+        self.modus('haengt')
+        self.s.trends.starten(warten=True)
+        self.assertIn('zu lange', self.s.trends.fehler)
+        self.assertEqual(self.s.zaehler.stand()['n'], 1)
+
+    def test_schutz_wie_bei_den_anderen(self):
+        self.assertEqual(self.trends(token='falsch')[0], 403)
+        self.assertEqual(self.trends(origin='https://evil.example')[0], 403)
+        self.assertEqual(self.trends(host='evil.example:80')[0], 403)
+        self.assertEqual(self.trends(b'[1]')[0], 400)
+        self.assertEqual(self.trends(b'x' * 2000)[0], 413)
+        self.assertFalse(self.s.trends.laeuft)
+        self.assertEqual(self.aufrufe(), 0)
+
+
+class TrendGrenze(Basis):
+    limit = 1
+
+    def test_monatsgrenze_gilt_auch_fuer_trends(self):
+        self.assertEqual(self.frage()[0], 200)
+        self.modus('trend')
+        self.s.trends.starten(warten=True)
+        self.assertIn('Monatsgrenze', self.s.trends.fehler)
+        self.assertEqual(self.aufrufe(), 1)
 
 
 class Eingaben(Basis):
@@ -442,6 +571,32 @@ class Hilfen(unittest.TestCase):
     def test_standard_ist_haiku_und_100(self):
         self.assertEqual((P.KONFIG['modell'], P.KONFIG['limit']), ('claude-haiku-5-5', 100))
         self.assertEqual(P.KONFIG['modell_kauf'], 'claude-sonnet-5-5')
+        self.assertEqual((P.KONFIG['modell_trend'], P.KONFIG['trend_tage'], P.KONFIG['trend_auto']), ('claude-sonnet-5-5', 7, True))
+
+    def test_trend_auto_per_umgebung_aus(self):
+        os.environ['VINTED_KI_TREND_AUTO'], os.environ['VINTED_KI_TREND_TAGE'] = 'aus', '3'
+        try:
+            k = P.konfig()
+        finally:
+            del os.environ['VINTED_KI_TREND_AUTO'], os.environ['VINTED_KI_TREND_TAGE']
+        self.assertEqual((k['trend_auto'], k['trend_tage']), (False, 3))
+
+    def test_bereinigen_trend(self):
+        d = P.bereinigen_trend({'einkauf': [{'was': ' Nike  Tech Fleece ', 'tempo': 'schnell', 'verkauf_von': 50, 'verkauf_bis': 30, 'nische': 'ja'},
+                                            {'was': 'Vase', 'tempo': 'langsam'}, {'was': '', 'tempo': 'schnell'}, 'kaputt',
+                                            {'was': 'x' * 300, 'verkauf_bis': True}] + [{'was': 'T%d' % i, 'tempo': 'mittel'} for i in range(10)],
+                                'einstellen': [{'was': 'Gis', 'tempo': 'schnell', 'nische': True}],
+                                'quellen': [{'titel': '', 'url': 'https://example.org/a'}, {'url': 'http://example.org'}, {'url': 'https://x'},
+                                            {'url': 'https://e.de/<script>'}, {'url': 5}]})
+        e = d['einkauf']
+        self.assertEqual(len(e), 8)
+        self.assertEqual(e[0], {'was': 'Nike Tech Fleece', 'marke': '', 'suche': 'Nike Tech Fleece', 'warum': '', 'verkauf_von': 30.0,
+                                'verkauf_bis': 50.0, 'tempo': 'schnell', 'nische': False})
+        self.assertEqual((len(e[1]['was']), e[1]['tempo'], e[1]['verkauf_bis']), (80, 'mittel', 0))
+        self.assertEqual(d['einstellen'], [{'was': 'Gis', 'warum': '', 'tempo': 'schnell', 'nische': True}])
+        self.assertEqual(d['quellen'], [{'titel': 'example.org', 'url': 'https://example.org/a'}])
+        self.assertIsNone(P.bereinigen_trend({'einkauf': [{'was': 'Vase', 'tempo': 'langsam'}]}))
+        self.assertIsNone(P.bereinigen_trend([]))
 
     def test_umgebungsvariablen_schalten_modell_um(self):
         os.environ['VINTED_KI_MODELL'], os.environ['VINTED_KI_LIMIT'] = 'claude-sonnet-5-5', '50'

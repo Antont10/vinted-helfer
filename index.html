@@ -126,7 +126,7 @@ p{margin:6px 0}
 <body>
 <div id="laden" role="status"><div class="kreis"></div>Lädt …</div>
 <h1>Vinted-Helfer</h1>
-<p class="sub">Läuft nur auf deinem Gerät. Nichts wird gesendet, außer du tippst „KI-Vorschlag“ oder „KI-Kauf-Check“ (dann gehen Foto und Name an Claude, beim Kauf-Check auch Preis und Angebotstext). Kein Vinted-Login. Du kopierst Texte und klickst in Vinted selbst.</p>
+<p class="sub">Läuft nur auf deinem Gerät. Nichts wird gesendet, außer du tippst „KI-Vorschlag“ oder „KI-Kauf-Check“ (dann gehen Foto und Name an Claude, beim Kauf-Check auch Preis und Angebotstext). Die Trends recherchiert der KI-Proxy am Mac im Netz, ohne deine Daten. Kein Vinted-Login. Du kopierst Texte und klickst in Vinted selbst.</p>
 
 <div class="tabs" id="tabs">
   <button data-t="heute" class="on">Heute</button>
@@ -146,7 +146,7 @@ p{margin:6px 0}
 
 <section id="t-heute">
   <div class="card"><div class="row"><h2>Heute zu tun</h2><button class="p" id="h-paste">Link einfügen</button></div><div id="h-list"></div></div>
-  <div class="card"><h2>Saison</h2><div id="h-saison"></div></div>
+  <div class="card"><h2>Was jetzt schnell weggeht</h2><div id="h-saison"></div></div>
 </section>
 
 <section id="t-liste" class="hide">
@@ -211,6 +211,12 @@ p{margin:6px 0}
 </section>
 
 <section id="t-einkauf" class="hide">
+  <div class="card" id="trend-card">
+    <h2>Trends: kaufen und schnell weiterverkaufen</h2>
+    <p class="muted">Was sich auf Vinted gerade schnell verkauft. Der KI-Proxy am Mac recherchiert dafür einmal pro Woche im Netz und öffnet dabei nie vinted.de. Die Verkaufspreise schätzt Claude. Den Höchstpreis rechnet der Helfer mit deinem Mindestgewinn, etwa 5&nbsp;€ Porto zu dir und 30 Minuten Arbeit. Oben steht, was schnell weggeht, darin zuerst deine Nische.</p>
+    <div id="tr-top"></div>
+    <div id="tr-list"></div>
+  </div>
   <div class="card">
     <h2>Gespeicherte Suchen</h2>
     <p class="muted">„Suche öffnen“ zeigt die Vinted-Suche mit deinen Angaben, neueste zuerst. Der Helfer ruft dabei nichts ab. Den Alarm macht die Vinted-App: Suche dort öffnen und speichern, dann meldet sie neue Treffer.</p>
@@ -530,7 +536,8 @@ function migrate(list){
   });
 }
 // Heute-Liste: p = Reihenfolge, kleiner ist wichtiger
-function heute(items,meta,ref){
+// opt.trends: am Mac mit KI erinnert die Liste, wenn die Trends hier eine Woche alt sind (der Proxy hat dann schon neue)
+function heute(items,meta,ref,opt){
   ref=ref||today();const T=[];
   for(const it of items){
     if(it.status==='verkauft'&&it.verkauftAm){
@@ -551,6 +558,8 @@ function heute(items,meta,ref){
     if(it.status==='idee')T.push({p:7,typ:'foto',id:it.id,txt:'Fotografieren: '+it.name,info:'Bei Tageslicht, Foto-Checkliste unter Bearbeiten'});
   }
   if(meta.postfach!==ref)T.push({p:1,typ:'post',txt:'Vinted-Nachrichten prüfen',info:'Innerhalb von 24 Stunden antworten'});
+  if(opt&&opt.trends){const t=trendSauber(meta.trends);if(!t||trendAlter(t,ref)>=TREND_TAGE)T.push({p:8,typ:'trends',txt:'Trends holen',
+    info:t?`Stand vom ${fmt(trendTag(t))} Der KI-Proxy hat inzwischen neu recherchiert, was gerade schnell weggeht.`:'Was gerade schnell weggeht, recherchiert der KI-Proxy einmal pro Woche im Netz.'})}
   if(items.length&&(!meta.export||ageDays(meta.export,ref)>=EXPORT_TAGE))T.push({p:8,typ:'export',txt:'Daten sichern',info:meta.export?`Zuletzt am ${fmt(meta.export)}`:'Noch nie gesichert'});
   // Jahreszähler: Hinweis ab 25 Verkäufen oder 1.500 €, bis du „Gesehen“ tippst (kommt bei der nächsten Stufe wieder)
   const y=ref.slice(0,4),J=jahr(items,y);
@@ -731,6 +740,79 @@ function kiKaufAntwort(a){
 }
 // Mitte der Preis-Schätzung, auf 0,50 € gerundet
 const kiMitte=e=>e&&e.bis?round05((e.von+e.bis)/2):null;
+// Phase 8 Trends: Der KI-Proxy am Mac recherchiert einmal pro Woche im Netz (nur Websuche, er öffnet nie vinted.de).
+// Hier wird nur geprüft, sortiert und gerechnet. Gleiche Regeln wie bereinigen_trend im Proxy.
+const TREND_TAGE=7,TREND_PORTO=5,TREND_MIN=5,TEMPO_TEXT={schnell:'geht schnell weg (unter 1 Woche)',mittel:'1 bis 3 Wochen'};
+function trendSauber(t){
+  if(!t||typeof t!=='object')return null;
+  const s=(x,n)=>(typeof x==='string'?x:'').replace(/[\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
+  const z=x=>typeof x==='number'&&Number.isFinite(x)&&x>0&&x<100000?Math.round(x*100)/100:0;
+  const tempo=x=>x==='schnell'||x==='mittel'?x:x==='langsam'?null:'mittel';
+  const arr=x=>(Array.isArray(x)?x:[]).filter(y=>y&&typeof y==='object');
+  const einkauf=[],einstellen=[],quellen=[];
+  for(const e of arr(t.einkauf)){
+    const was=s(e.was,80),te=tempo(e.tempo);if(!was||!te)continue;
+    let von=z(e.verkauf_von),bis=z(e.verkauf_bis);if(!von)von=bis;if(!bis)bis=von;if(von>bis)[von,bis]=[bis,von];
+    einkauf.push({was,marke:s(e.marke,40),suche:s(e.suche,60)||was.slice(0,60),warum:s(e.warum,200),verkauf_von:von,verkauf_bis:bis,tempo:te,nische:e.nische===true});
+    if(einkauf.length===8)break;
+  }
+  for(const e of arr(t.einstellen)){
+    const was=s(e.was,80),te=tempo(e.tempo);
+    if(was&&te)einstellen.push({was,warum:s(e.warum,200),tempo:te,nische:e.nische===true});
+    if(einstellen.length===6)break;
+  }
+  for(const q of arr(t.quellen)){
+    if(typeof q.url!=='string'||q.url.length>400||!/^https:\/\/[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?::\d+)?(?:[/?#][^\s<>"'`\\]*)?$/.test(q.url))continue;
+    quellen.push({titel:s(q.titel,100)||q.url.split('/')[2],url:q.url});
+    if(quellen.length===6)break;
+  }
+  const zeit=t.zeit;
+  if(!(einkauf.length||einstellen.length)||!Number.isInteger(zeit)||zeit<1.6e12)return null;
+  return {zeit,einkauf,einstellen,quellen,modell:s(t.modell,40)};
+}
+const trendTag=t=>iso(new Date(t.zeit));
+const trendAlter=(t,ref)=>ageDays(trendTag(t),ref);
+// Neuere Trends gewinnen (beim Holen und beim Zusammenführen der Sicherung)
+function trendNeuer(a,b){const x=trendSauber(a),y=trendSauber(b);return !x?y:!y?x:y.zeit>x.zeit?y:x}
+const trendName=e=>e.marke&&!e.was.toLowerCase().includes(e.marke.toLowerCase())?e.marke+' '+e.was:e.was;
+// Passt der Trend zu dir? Claude markiert deine Nische, dazu zählen die Marken aus deinen eigenen Artikeln.
+function trendMarken(items){return [...new Set((items||[]).map(markeVon).filter(m=>m&&m!=='Ohne Marke').map(m=>m.toLowerCase()))]}
+function trendPasst(e,marken){
+  if(e.nische)return true;
+  const m=String(e.marke||'').toLowerCase(),w=(e.was+' '+e.suche).toLowerCase();
+  return marken.some(x=>x.length>2&&(m===x||(m.length>2&&(m.includes(x)||x.includes(m)))||w.includes(x)));
+}
+// Reihenfolge: erst was schnell weggeht, darin deine Nische zuerst. Sonst bleibt Claudes Reihenfolge. i ist die Stelle in der Liste von Claude.
+function trendListe(list,items){
+  const marken=trendMarken(items);
+  return (list||[]).map((e,i)=>({...e,passt:trendPasst(e,marken),i}))
+    .sort((a,b)=>(a.tempo==='schnell'?0:1)-(b.tempo==='schnell'?0:1)||(b.passt-a.passt)||a.i-b.i);
+}
+// Höchstpreis beim Einkauf: Mitte von Claudes Verkaufs-Schätzung, etwa 5 € Porto zu dir, 30 Minuten Arbeit, dein Mindestgewinn
+function trendMax(e){
+  const vk=kiMitte({von:e.verkauf_von,bis:e.verkauf_bis});
+  return vk?{vk,...kaufStaffel({vk,portoEin:TREND_PORTO,minuten:STD_MIN})}:{vk:null,max:0,handelnBis:0};
+}
+// „Am meisten Sinn macht“: der erste Trend in der Reihenfolge, bei dem du noch mindestens 5 € zahlen darfst (sonst findest du kaum etwas)
+function trendTipp(sortiert){const e=(sortiert||[]).find(x=>trendMax(x).max>=TREND_MIN);return e?{e,...trendMax(e)}:null}
+// Gespeicherte Suche aus einem Trend: Marke und Suchbegriff getrennt, Höchstpreis aus deiner Rechnung
+function trendSuche(e){
+  const m=String(e.marke||'').trim(),q=String(e.suche||e.was||'').trim(),lm=m.toLowerCase(),lq=q.toLowerCase();
+  const [marke,typ]=!m?['',q]:lq.startsWith(lm)?[m,q.slice(m.length).trim()]:lq.includes(lm)?['',q]:[m,q];
+  const max=trendMax(e).max;
+  return {marke,typ,groesse:'',max:max>=1?max:null};
+}
+// Antwort vom Proxy auswerten: neuere Trends übernehmen und sagen, was passiert ist
+function trendAntwort(alt,d){
+  const a=trendSauber(alt),neu=trendSauber(d&&d.trends),besser=!!neu&&(!a||neu.zeit>a.zeit),t=besser?neu:a;
+  const f=d&&typeof d.letzter_fehler==='string'?d.letzter_fehler.trim().slice(0,300):'';
+  const msg=besser?`Neue Trends vom ${fmt(trendTag(neu))}`
+    :d&&d.laeuft?'Claude recherchiert noch. Tipp in ein paar Minuten nochmal auf „Trends holen“.'
+    :f?'Die letzte Recherche hat nicht geklappt: '+f+(a?' Die Trends bleiben auf dem alten Stand.':'')
+    :a?`Keine neueren Trends. Stand ${fmt(trendTag(a))}, der Proxy recherchiert ab ${fmt(iso(new Date(a.zeit+TREND_TAGE*864e5)))} von selbst neu.`
+    :'Noch keine Trends. Tipp in ein paar Minuten nochmal.';
+  return {trends:t,msg};
+}
 // Echtheits-Check je Kategorie. Faustregeln, keine Garantie.
 const ECHT_IMMER=['Nur über Vinted bezahlen, nie per Überweisung oder PayPal „Freunde“ (sonst kein Käuferschutz)','Echte Fotos vom Verkäufer, keine Katalogbilder. Sonst eigene Fotos anfragen','Bewertungen des Verkäufers ansehen: wie viele, wie neu','Viel billiger als üblich? Warnsignal, lieber nachfragen'];
 const ECHT={
@@ -775,7 +857,7 @@ const kiTitelChecks=t=>titelChecks({marke:'x',typ:'x',groesse:'x',farbe:'x'},t);
 const beschrText=it=>String(it.beschr||'').trim()?it.beschr:beschreibung(it);
 /* LOGIK-END */
 
-const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='7.1 vom 15.10.2026',BILD_PX=160;
+const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='8.0 vom 16.10.2026',BILD_PX=160;
 const ADRESSE='https://antont10.github.io/vinted-helfer/';
 const TABS=['heute','liste','angebote','rechner','einkauf','zahlen','daten'];
 let items=[],meta={},editId=null,filt='offen',relistId=null,relistWarn=false,stand=new Map(),nBild=null,db=null,dauerhaft=null;
@@ -791,6 +873,7 @@ function load(){
   if(!meta.suchenWeg||typeof meta.suchenWeg!=='object')meta.suchenWeg={};
   meta.angebote=Array.isArray(meta.angebote)?meta.angebote.map(angebotSauber).filter(Boolean):[];
   if(!meta.angeboteWeg||typeof meta.angeboteWeg!=='object')meta.angeboteWeg={};
+  meta.trends=trendSauber(meta.trends);
   merkeStand();
 }
 // Geänderte Artikel bekommen einen Zeitstempel, den braucht das Zusammenführen
@@ -882,24 +965,24 @@ function taskBtns(t){
   const b=(h,l)=>`<button class="s" data-h="${h}" data-id="${t.id??''}">${l}</button>`;
   return ({versand:b('versendet','Versendet'),post:b('post','Erledigt'),nach:b('nachtext','Text')+b('nachok','Erledigt'),
     senk:b('senk','Übernommen'),relist:b('relist','Neu eingestellt'),stellen:b('edit','Bearbeiten')+b('eingestellt','Eingestellt'),
-    bew:b('bewertet','Bewertet'),foto:b('foto','Fotografiert'),export:b('export','Sichern'),jahr:b('zahlen','Zahlen')+b('jahrok','Gesehen')}[t.typ]||'')+(t.id!=null?linkBtn(byId(t.id),'Vinted'):'');
+    bew:b('bewertet','Bewertet'),foto:b('foto','Fotografiert'),export:b('export','Sichern'),trends:b('trends','Holen'),jahr:b('zahlen','Zahlen')+b('jahrok','Gesehen')}[t.typ]||'')+(t.id!=null?linkBtn(byId(t.id),'Vinted'):'');
 }
 function relistForm(id){
   return `<div style="margin-top:8px"><p class="muted">Was hast du geändert?</p>${AENDERUNG.map(a=>`<label class="ck"><input type="checkbox" data-rl> ${a}</label>`).join('')}
   <button class="s" data-h="relistok" data-id="${id}">Bestätigen</button> <span class="hint" id="rl-msg"></span></div>`;
 }
 function renderHeute(){
-  const T=heute(items,meta);
+  const T=heute(items,meta,undefined,{trends:!kiSperre()});
   $('#h-list').innerHTML=T.length?T.map(t=>`<div class="task${t.rot?' rot':''}"><div class="art">${t.id!=null?bildTag(byId(t.id),'k'):''}<div><div class="tt">${esc(t.txt)}</div><div class="muted">${esc(t.info)}</div>${t.typ==='relist'&&String(relistId)===String(t.id)?relistForm(t.id):''}</div></div><div class="acts">${taskBtns(t)}</div></div>`).join('')
     :'<p class="muted">Alles erledigt für heute.</p>';
-  const s=SAISON[new Date().getMonth()];
-  $('#h-saison').innerHTML=`<p><b>${s[0]}:</b> gut läuft ${esc(s[1])}.</p><p>Jetzt einstellen: ${esc(s[2])}.</p><p class="muted">Faustregeln, nicht belegt. Ganzer Kalender unter Rechner.</p>`;
+  renderTrendHeute();
 }
 $('#h-list').addEventListener('click',e=>{
   const b=e.target.closest('button[data-h]');if(!b)return;
   const h=b.dataset.h,it=byId(b.dataset.id);
   if(h==='post'){meta.postfach=today();save()}
   else if(h==='export'){sichern();return}
+  else if(h==='trends'){trendsHolen(false);return}
   else if(h==='zahlen'){go('zahlen');return}
   else if(h==='jahrok'){const y=today().slice(0,4);meta.jahrHinweis=y+':'+jahr(items,y).stufe;save()}
   else if(!it)return;
@@ -1132,7 +1215,7 @@ function kiHtml(ort){
 function kiRender(ort){const el=$('#ki-'+ort);if(el)el.innerHTML=kiHtml(ort)}
 function kiStandMerken(stand){const st=kiStandSauber(stand);if(st){meta.ki=st;save()}}
 // Fenster des Proxys fragen. Der Proxy-Teil läuft in dem Fenster, hier nur Nachrichten hin und her.
-// frage: {name,bild} für den KI-Vorschlag oder {art:'kauf',name,preis,text,bild} für den Kauf-Check
+// frage: {name,bild} für den KI-Vorschlag, {art:'kauf',name,preis,text,bild} für den Kauf-Check oder {art:'trends',neu} für die Trends
 function kiFrage(w,frage){
   return new Promise((ok,no)=>{
     const id=Date.now()+'-'+Math.random().toString(36).slice(2,8),t0=Date.now();
@@ -1145,7 +1228,8 @@ function kiFrage(w,frage){
       if(d.typ==='angenommen'){
         angenommen=true;
         // Ein alter Proxy kennt den Kauf-Check nicht (vor 7.0) oder nicht ohne Preis (vor 7.1)
-        if(frage.art==='kauf'&&!(d.stand&&d.stand.v>=3))ende(no,new Error('Der KI-Proxy auf dem Mac ist noch die alte Fassung. Im Terminal im Ordner vinted-helfer „./ki-autostart.sh neu“ ausführen, dann nochmal tippen.'));
+        if(frage.art==='trends'&&!(d.stand&&d.stand.v>=4))ende(no,new Error('Der KI-Proxy auf dem Mac ist noch die alte Fassung ohne Trends. Im Terminal im Ordner vinted-helfer „./ki-autostart.sh neu“ ausführen, dann nochmal tippen.'));
+        else if(frage.art==='kauf'&&!(d.stand&&d.stand.v>=3))ende(no,new Error('Der KI-Proxy auf dem Mac ist noch die alte Fassung. Im Terminal im Ordner vinted-helfer „./ki-autostart.sh neu“ ausführen, dann nochmal tippen.'));
       }
       else if(d.typ==='antwort')ende(ok,d);
       else if(d.typ==='fehler')ende(no,Object.assign(new Error(String(d.text||'Fehler')),{stand:d.stand}));
@@ -1161,7 +1245,7 @@ function kiFrage(w,frage){
       if(!angenommen){
         if(Date.now()-t0>4500)return ende(no,new Error('Der KI-Proxy antwortet nicht. Starte ihn am Mac (Doppelklick auf „ki-proxy-starten.command“ im Ordner vinted-helfer, oder im Terminal „python3 ki-proxy.py“) und tippe nochmal.'));
         if(Date.now()-t0>500)try{w.postMessage({...frage,typ:'frage',id},KI_ORIGIN)}catch(e){}
-      }else if(Date.now()-t0>150000)ende(no,new Error('Das hat zu lange gedauert. Später nochmal versuchen.'));
+      }else if(Date.now()-t0>(frage.art==='trends'?420000:150000))ende(no,new Error('Das hat zu lange gedauert. Später nochmal versuchen.'));
     },300);
   });
 }
@@ -1267,7 +1351,7 @@ function renderEinkauf(){
   $('#e-kat').innerHTML=Object.entries(ECHT).map(([k,[l]])=>`<button data-k="${k}"${k===echtKat?' class="on"':''}>${l}</button>`).join('');
   const liste=(titel,arr,p)=>`<h3>${esc(titel)}</h3>`+arr.map((t,i)=>`<label class="ck"><input type="checkbox" data-e="${p+i}"${echtHaken.has(p+i)?' checked':''}> ${esc(t)}</label>`).join('');
   $('#e-list').innerHTML=liste('Vor dem Kauf',ECHT_IMMER,'i')+liste(ECHT[echtKat][0],ECHT[echtKat][1],echtKat)+liste('Nach Erhalt',ECHT_NACH,'n');
-  echtStand();calcD();renderMerkliste();kaufKiRender();
+  echtStand();calcD();renderMerkliste();kaufKiRender();renderTrendEinkauf();
 }
 function echtStand(){
   const alle=[...document.querySelectorAll('#e-list input[data-e]')];
@@ -1353,7 +1437,79 @@ $('#d-link').addEventListener('input',()=>{const p=linkAusText($('#d-link').valu
 // KI-Kauf-Check: Foto, Name, Preis und Angebotstext gehen über das Proxy-Fenster an Claude (Sonnet). Claude schätzt den Verkaufspreis,
 // der Helfer rechnet. Das Foto bleibt nur im Arbeitsspeicher. Am iPhone (ohne Proxy) geht die Frage über die Claude-App:
 // Anton teilt oder kopiert sie selbst und fügt Claudes Antwort ein. Der Helfer schickt nichts selbst.
-const kaufS={erg:null,busy:false,msg:'',vkKi:null};
+// Phase 8: Trends vom KI-Proxy. Holen geht über die Fenster-Brücke wie beim KI-Vorschlag, gerechnet wird hier.
+const trendS={busy:false,msg:''};
+const spanne=e=>e.verkauf_von===e.verkauf_bis?eur0(e.verkauf_bis):eur0(e.verkauf_von)+' bis '+eur0(e.verkauf_bis);
+const passtTag=e=>e.passt?' <span class="badge">passt zu dir</span>':'';
+function trendKnoepfe(){
+  const sp=kiSperre();
+  if(sp)return `<p class="muted">${istIOS()?'Am iPhone kommen die Trends mit der Sicherung vom Mac (Daten, „Datei zusammenführen“).':esc(sp)}</p>`;
+  const d=trendS.busy?' disabled':'';
+  return `<div class="btns"><button class="s" data-tr="holen"${d}>${trendS.busy?'Wird geholt …':'Trends holen'}</button>${meta.trends?`<button class="s" data-tr="neu"${d}>Neu recherchieren</button>`:''}</div>${trendS.msg?`<p class="hint">${esc(trendS.msg)}</p>`:''}`;
+}
+const trendStand=t=>`Stand ${fmt(trendTag(t))}, von Claude im Netz recherchiert. Schätzungen, keine Garantie.`;
+function renderTrendHeute(){
+  const t=meta.trends,el=$('#h-saison');
+  if(!t){
+    const s=SAISON[new Date().getMonth()];
+    el.innerHTML=`<p><b>${s[0]}:</b> gut läuft ${esc(s[1])}. Jetzt einstellen: ${esc(s[2])}.</p><p class="muted">Faustregel, nicht belegt. Echte Trends recherchiert der KI-Proxy am Mac einmal pro Woche im Netz.</p>`+trendKnoepfe();
+    return;
+  }
+  el.innerHTML=trendListe(t.einstellen,items).map(e=>`<div class="task"><div><div class="tt">${esc(e.was)}${passtTag(e)}</div><div class="muted">${esc(TEMPO_TEXT[e.tempo])}${e.warum?' · '+esc(e.warum):''}</div></div></div>`).join('')
+    +`<p class="muted">${esc(trendStand(t))} Was sich zum Weiterverkaufen lohnt: Tab Einkauf.</p>`+trendKnoepfe();
+}
+function renderTrendEinkauf(){
+  const t=meta.trends;
+  if(!t){$('#tr-top').innerHTML='';$('#tr-list').innerHTML=`<p class="muted">Noch keine Trends geholt.</p>`+trendKnoepfe();return}
+  const L=trendListe(t.einkauf,items),tipp=trendTipp(L);
+  $('#tr-top').innerHTML=tipp?`<div class="urteil ug"><p><b>Am meisten Sinn macht:</b> ${esc(trendName(tipp.e))} suchen und höchstens ${esc(preisText(tipp.max))} zahlen. Verkauft sich für etwa ${esc(spanne(tipp.e))}.</p></div>`
+    :L.length?'<div class="urteil uy"><p><b>Am meisten Sinn macht:</b> gerade nichts aus den Trends zukaufen. Bei keinem bleibt nach Porto und Käuferschutz dein Mindestgewinn.</p></div>':'';
+  $('#tr-list').innerHTML=L.map(e=>{
+    const m=trendMax(e),s=trendSuche(e),l=suchLink(s),da=meta.suchen.some(x=>sucheName(x).toLowerCase()===sucheName(s).toLowerCase());
+    const zeile=[e.verkauf_bis?'Verkauf etwa '+spanne(e):'',TEMPO_TEXT[e.tempo]].filter(Boolean).join(' · ');
+    return `<div class="task"><div><div class="tt">${esc(trendName(e))}${passtTag(e)}</div><div class="muted">${esc(zeile)}<br><b>${m.max>=TREND_MIN?'Höchstens '+esc(preisText(m.max))+' zahlen':m.max>=1?'Lohnt sich kaum, höchstens '+esc(preisText(m.max))+' zahlen':e.verkauf_bis?'Lohnt sich kaum zum Weiterverkaufen':'Preis unbekannt, im Kauf-Check selbst schätzen'}</b>${e.warum?' · '+esc(e.warum):''}</div></div>
+    <div class="acts">${l?`<a class="s" href="${esc(l)}" target="_blank" rel="noopener noreferrer">Suche öffnen ↗</a>`:''}<button class="s" data-tr="suche" data-i="${e.i}"${da?' disabled':''}>${da?'Gespeichert':'Als Suche speichern'}</button><button class="s" data-tr="kauf" data-i="${e.i}">Kauf-Check</button></div></div>`;
+  }).join('')+(t.quellen.length?`<details><summary class="muted">Quellen (${t.quellen.length})</summary>${t.quellen.map(q=>`<p class="muted"><a href="${esc(q.url)}" target="_blank" rel="noopener noreferrer">${esc(q.titel)}</a> · ${esc(q.url.split('/')[2])}</p>`).join('')}</details>`:'')
+    +`<p class="muted">${esc(trendStand(t))}</p>`+trendKnoepfe();
+}
+function renderTrends(){renderTrendHeute();renderTrendEinkauf()}
+async function trendsHolen(neu){
+  if(trendS.busy||kiSperre())return;
+  // Das Fenster muss direkt im Klick geöffnet werden, sonst blockt der Browser es
+  const w=window.open(KI_ORIGIN+'/ki','vinted-ki','popup=yes,width=440,height=280');
+  if(!w){trendS.msg='Der Browser hat das Fenster blockiert. Erlaube Pop-ups für diese Seite und tippe nochmal.';renderTrends();return}
+  Object.assign(trendS,{busy:true,msg:neu?'Claude recherchiert im Netz, das dauert 1 bis 3 Minuten. Das kleine Fenster bitte offen lassen.':''});renderTrends();
+  try{
+    const d=await kiFrage(w,{art:'trends',neu:!!neu}),r=trendAntwort(meta.trends,d);
+    kiStandMerken(d.stand);
+    meta.trends=r.trends;trendS.msg=r.msg;save();
+  }catch(x){trendS.msg=x&&x.message||'Das hat nicht geklappt.';if(x&&x.stand)kiStandMerken(x.stand)}
+  finally{trendS.busy=false;renderHeute();renderTrendEinkauf()}
+}
+function trendKlick(e){
+  const b=e.target.closest('button[data-tr]');if(!b)return;
+  const a=b.dataset.tr,t=meta.trends,x=t&&t.einkauf[Number(b.dataset.i)];
+  if(a==='holen')return trendsHolen(false);
+  if(a==='neu'){if(confirm('Neu recherchieren kostet 1 von deinen KI-Aufrufen im Monat und dauert 1 bis 3 Minuten. Weiter?'))trendsHolen(true);return}
+  if(!x)return;
+  if(a==='suche'){
+    const s=sucheSauber({id:String(Date.now()),...trendSuche(x),link:'',geaendert:Date.now()});
+    meta.suchen.push(s);save();renderEinkauf();$('#f-msg').textContent=`Gespeichert: ${sucheName(s)}. In der Vinted-App die Suche öffnen und dort speichern, dann meldet Vinted neue Treffer.`;
+    return;
+  }
+  if(a==='kauf'){
+    const m=trendMax(x);
+    $('#d-name').value=trendName(x).slice(0,80);
+    if(m.vk){$('#d-vk').value=m.vk;kaufS.vkKi=m.vk}
+    // gleiches Porto wie im Trend-Höchstpreis. Ein Porto aus dem Angebotstext ersetzt es später (kaufVorfuellen).
+    if(num($('#d-ein').value)==null){$('#d-ein').value=TREND_PORTO;kaufS.portoTrend=TREND_PORTO}
+    kaufS.msg=`Aus den Trends: „Was“${m.vk?', „Verkauf erwartet“ '+eur(m.vk)+' (Mitte von Claudes Schätzung)':''} und etwa ${eur0(TREND_PORTO)} Porto zu dir. Jetzt Link, Kaufpreis oder Text vom Angebot dazu. Steht dort ein anderes Porto, nimmt der Helfer das.`;
+    calcD();kaufKiRender();$('#kauf-card').scrollIntoView({behavior:'smooth',block:'start'});
+  }
+}
+$('#h-saison').addEventListener('click',trendKlick);
+$('#trend-card').addEventListener('click',trendKlick);
+const kaufS={erg:null,busy:false,msg:'',vkKi:null,portoTrend:null};
 let kaufBild=null,kaufEditId=null;
 function kaufKiRender(){
   const app=!!kiSperre(),z=kiZaehler(meta.ki),e=kaufS.erg;
@@ -1381,7 +1537,8 @@ function kaufVorfuellen(){
   const t=$('#k-text').value,p=preisAusText(t),l=linkAusText($('#d-link').value)||linkAusText(t),neu=[];
   if(!$('#d-name').value.trim()&&l&&l.name){$('#d-name').value=l.name;neu.push('„Was“')}
   if(p&&p.preis&&num($('#d-kauf').value)==null){$('#d-kauf').value=p.preis;neu.push('Kaufpreis '+eur(p.preis))}
-  if(p&&p.porto&&num($('#d-ein').value)==null){$('#d-ein').value=p.porto;neu.push('Porto '+eur(p.porto))}
+  const ein=num($('#d-ein').value);
+  if(p&&p.porto&&(ein==null||ein===kaufS.portoTrend)){$('#d-ein').value=p.porto;kaufS.portoTrend=null;neu.push('Porto '+eur(p.porto))}
   return neu;
 }
 // „Was“ aus Claudes Antwort: Marke und Artikel, ohne die Marke doppelt
@@ -1604,7 +1761,7 @@ function renderDaten(){
     +z('Version',VERSION);
 }
 // Sicherung Version 4: Artikel, Bilder, Lösch-Vermerke, gespeicherte Suchen und (ab 7.0) die Merkliste
-function sicherung(){return JSON.stringify({version:4,exportiert:new Date().toISOString(),items,geloescht:meta.geloescht,bilder:Object.fromEntries(bilder),suchen:meta.suchen,suchenWeg:meta.suchenWeg,angebote:meta.angebote,angeboteWeg:meta.angeboteWeg})}
+function sicherung(){return JSON.stringify({version:4,exportiert:new Date().toISOString(),items,geloescht:meta.geloescht,bilder:Object.fromEntries(bilder),suchen:meta.suchen,suchenWeg:meta.suchenWeg,angebote:meta.angebote,angeboteWeg:meta.angeboteWeg,trends:meta.trends})}
 const dateiName=()=>'vinted-helfer-'+today()+'.json';
 // Datei fürs Teilen-Menü, wenn der Browser das kann (iPhone: AirDrop, In Dateien sichern)
 function sicherungsDatei(inhalt){
@@ -1639,6 +1796,8 @@ function importieren(e,modus){
     const neuWeg=Object.fromEntries(Object.entries((d&&d.suchenWeg)||{}).filter(([,v])=>typeof v==='number'));
     const neuAngebote=Array.isArray(d&&d.angebote)?d.angebote.map(angebotSauber).filter(Boolean):[];
     const neuAWeg=Object.fromEntries(Object.entries((d&&d.angeboteWeg)||{}).filter(([,v])=>typeof v==='number'));
+    // Trends sind keine eigenen Daten: in beiden Fällen gewinnt der neuere Stand
+    const trends=trendNeuer(meta.trends,d&&d.trends);
     let msg;
     if(modus==='ersetzen'){
       if(!confirm('Alle Daten auf diesem Gerät durch '+list.length+' Artikel aus der Datei ersetzen?'))return;
@@ -1654,7 +1813,8 @@ function importieren(e,modus){
       for(const [k,v] of Object.entries(z.bilder))bilder.set(k,v);
       msg=`Zusammengeführt: ${z.neu} neu, ${z.aktualisiert} aktualisiert, ${z.entfernt} entfernt.`;
     }
-    msg+=` Gespeicherte Suchen: ${meta.suchen.length}. Merkliste: ${meta.angebote.length}.`;
+    meta.trends=trends;
+    msg+=` Gespeicherte Suchen: ${meta.suchen.length}. Merkliste: ${meta.angebote.length}.`+(trends?` Trends vom ${fmt(trendTag(trends))}`:'');
     dbTx(s=>{s.clear();for(const [k,v] of bilder)s.put(v,k)});
     // importierte Artikel behalten ihren Zeitstempel, sonst gewinnen sie beim nächsten Abgleich zu Unrecht
     merkeStand();save();closeEdit();renderAll();alert(msg);
