@@ -61,6 +61,11 @@ eq('doppelte IDs',L.migrate([{id:1,name:'a'},{id:1,name:'b'}]).map(i=>i.id).filt
 eq('Link aus Text',L.linkAusText('Schau mal: https://www.vinted.de/items/42-gi-weiss?utm_source=app toll').link,'https://www.vinted.de/items/42-gi-weiss');
 eq('erst fremder, dann Vinted-Link',L.linkAusText('https://evil.com/x https://vinted.de/items/7').id,'7');
 eq('Text ohne Link',L.linkAusText('nur Text'),null);
+// iPhone-Fix: Links ohne https://, aber nie aus einer fremden Adresse
+eq('Link ohne https',L.parseLink('vinted.de/items/123-nike-hoodie').link,'https://www.vinted.de/items/123-nike-hoodie');
+eq('Link ohne https im Text',L.linkAusText('Schau mal: www.vinted.de/items/987-gi-a2?share=1 ok').id,'987');
+eq('Adresse in fremdem Link zählt nicht',[L.linkAusText('https://evil.com/vinted.de/items/5'),L.linkAusText('evil.com/vinted.de/items/5'),L.parseLink('https://evil.com/vinted.de/items/5')],[null,null,null]);
+eq('Link mit Werbe-Anhang',L.linkAusText('https://www.vinted.de/items/4567-polo?referrer=catalog&utm_source=ios_app').link,'https://www.vinted.de/items/4567-polo');
 // Zusammenführen (Phase 4)
 const lok={items:[{id:1,name:'A alt',geaendert:100},{id:2,name:'B',geaendert:300},{id:3,name:'C',geaendert:100},{id:5,name:'E'}],geloescht:{},bilder:{1:'bild-a-alt',2:'bild-b'}};
 const imp={items:[{id:1,name:'A neu',geaendert:200},{id:2,name:'B alt',geaendert:250},{id:4,name:'D',geaendert:50},{id:5,name:'E2'}],geloescht:{3:150,9:10},bilder:{1:'bild-a-neu',4:'bild-d'}};

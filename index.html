@@ -401,7 +401,7 @@ function buendel(list,rab){
 }
 // Vinted-Link prüfen und kürzen, Name aus dem Link lesen. Der Helfer ruft den Link nie ab.
 function parseLink(s){
-  const m=String(s||'').trim().match(/^https?:\/\/(?:www\.)?vinted\.([a-z]{2,3}(?:\.[a-z]{2})?)\/items\/(\d+)(?:-([^?#\/\s]*))?/i);
+  const m=String(s||'').trim().match(/^(?:https?:\/\/)?(?:www\.)?vinted\.([a-z]{2,3}(?:\.[a-z]{2})?)\/items\/(\d+)(?:-([^?#\/\s]*))?/i);
   if(!m)return null;
   let slug=m[3]||'';try{slug=decodeURIComponent(slug)}catch(e){}
   const name=slug.split('-').filter(Boolean).map(w=>w[0].toUpperCase()+w.slice(1)).join(' ');
@@ -409,7 +409,8 @@ function parseLink(s){
 }
 // Geteilter Text aus der Vinted-App kann Text plus Link sein: den ersten Vinted-Artikel-Link nehmen
 function linkAusText(s){
-  for(const u of String(s||'').match(/https?:\/\/[^\s<>"']+/gi)||[]){const p=parseLink(u);if(p)return p}
+  // auch ohne https:// (manche Apps kopieren nur „vinted.de/items/…“)
+  for(const u of String(s||'').match(/(?<![\w./-])(?:https?:\/\/)?(?:www\.)?vinted\.[a-z.]{2,6}\/items\/\d+[^\s<>"']*|https?:\/\/[^\s<>"']+/gi)||[]){const p=parseLink(u);if(p)return p}
   return null;
 }
 // Import zusammenführen: je Artikel gewinnt die neuere Änderung, ein jüngerer Lösch-Vermerk entfernt ihn.
@@ -857,7 +858,7 @@ const kiTitelChecks=t=>titelChecks({marke:'x',typ:'x',groesse:'x',farbe:'x'},t);
 const beschrText=it=>String(it.beschr||'').trim()?it.beschr:beschreibung(it);
 /* LOGIK-END */
 
-const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='8.0 vom 16.10.2026',BILD_PX=160;
+const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='8.1 vom 16.10.2026',BILD_PX=160;
 const ADRESSE='https://antont10.github.io/vinted-helfer/';
 const TABS=['heute','liste','angebote','rechner','einkauf','zahlen','daten'];
 let items=[],meta={},editId=null,filt='offen',relistId=null,relistWarn=false,stand=new Map(),nBild=null,db=null,dauerhaft=null;
@@ -898,22 +899,31 @@ const istBild=s=>typeof s==='string'&&/^data:image\/(jpeg|png|webp);base64,[A-Za
 function bildSetzen(id,url){id=String(id);url?bilder.set(id,url):bilder.delete(id);return dbTx(s=>url?s.put(url,id):s.delete(id))}
 function bildTag(it,k=''){const b=it&&bilder.get(String(it.id));return b?`<img class="thumb ${k}" src="${esc(b)}" alt="">`:''}
 function skaliert(img,px,q){
-  const k=Math.min(1,px/Math.max(img.naturalWidth,img.naturalHeight)),c=document.createElement('canvas');
-  c.width=Math.max(1,Math.round(img.naturalWidth*k));c.height=Math.max(1,Math.round(img.naturalHeight*k));
+  const w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;
+  const k=Math.min(1,px/Math.max(w,h)),c=document.createElement('canvas');
+  c.width=Math.max(1,Math.round(w*k));c.height=Math.max(1,Math.round(h*k));
   const g=c.getContext('2d');g.imageSmoothingQuality='high';g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);
   return c.toDataURL('image/jpeg',q);
 }
 // klein: 160 px lange Seite, JPEG, ca. 5 bis 10 KB (wird gespeichert). gross: 1536 px nur für die KI (kleine Etiketten mit der Größe sind bei 1024 px oft nicht lesbar), bleibt im Arbeitsspeicher.
-async function verkleinern(file){
+// Foto laden: erst createImageBitmap (dreht nach der Kamera-Angabe, am iPhone auch HEIC), sonst das klassische <img>
+async function bildAusDatei(file){
+  if(typeof createImageBitmap==='function')try{return await createImageBitmap(file,{imageOrientation:'from-image'})}catch(e){}
   const url=URL.createObjectURL(file);
-  try{
-    const img=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=url});
-    return {klein:skaliert(img,BILD_PX,0.7),gross:skaliert(img,KI_FOTO_PX,0.8)};
-  }finally{URL.revokeObjectURL(url)}
+  try{return await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>no(new Error('bild'));i.src=url})}
+  finally{URL.revokeObjectURL(url)}
 }
+async function verkleinern(file){
+  const img=await bildAusDatei(file);
+  try{return {klein:skaliert(img,BILD_PX,0.7),gross:skaliert(img,KI_FOTO_PX,0.8)}}
+  finally{if(img.close)img.close()}
+}
+// iPhone: Das Feld erst leeren, wenn das Foto gelesen ist. Vorher geleert, kann Safari die Datei oft nicht mehr lesen.
 async function fotoLesen(input){
-  const f=input.files&&input.files[0];input.value='';if(!f)return null;
-  try{return await verkleinern(f)}catch(e){alert('Dieses Foto kann der Browser nicht lesen. Bitte ein JPEG oder PNG wählen.');return null}
+  const f=input.files&&input.files[0];
+  try{return f?await verkleinern(f):null}
+  catch(e){alert('Dieses Foto ließ sich nicht lesen'+(f.type?' ('+f.type+')':'')+'. Bitte nochmal wählen oder ein anderes Foto nehmen.');return null}
+  finally{input.value=''}
 }
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1043,9 +1053,10 @@ $('#aktiv').addEventListener('click',e=>{
   renderAll();
 });
 // Link einfügen füllt den Namen aus dem Link, wenn er noch leer ist. Geteilter Text wird auf den Link gekürzt.
-$('#n-link').addEventListener('input',()=>{
+$('#n-link').addEventListener('input',e=>{
   const v=$('#n-link').value,p=linkAusText(v);if(!p)return;
-  if(/\s/.test(v.trim()))$('#n-link').value=p.link;
+  // Von Hand eingesetzt (iPhone: ins Feld tippen, „Einsetzen“): wie der Knopf, ein schon gespeicherter Artikel geht auf
+  if(e.inputType==='insertFromPaste'||/\s/.test(v.trim())){linkNr++;linkUebernehmen(v);return}
   if(p.name&&!$('#n-name').value.trim())$('#n-name').value=p.name;
 });
 function zeigeBildNeu(){const on=!!nBild;$('#n-bild').classList.toggle('hide',!on);$('#n-bild-weg').classList.toggle('hide',!on);if(on)$('#n-bild').src=nBild;else $('#n-bild').removeAttribute('src')}
@@ -1068,12 +1079,29 @@ $('#add').addEventListener('click',()=>{
   Object.assign(kiS.n,{erg:null,beschr:null,msg:''});
   items.push(it);save();['n-link','n-name','n-preis','n-min'].forEach(id=>$('#'+id).value='');$('#n-msg').textContent='';renderAll();
 });
-// Knopf „Link einfügen“: liest die Zwischenablage erst nach deinem Tipp. iOS zeigt dann die Blase „Einsetzen“.
+// Text aus der Zwischenablage. Ein Link aus einer App liegt dort manchmal nur als Adresse (text/uri-list), darum erst read().
+async function zwischenablageText(){
+  const c=navigator.clipboard;if(!c)throw new Error('keine Zwischenablage');
+  if(!c.read)return (await c.readText()).trim();
+  for(const it of await c.read())for(const typ of ['text/plain','text/uri-list'])
+    if(it.types.includes(typ)){const t=(await (await it.getType(typ)).text()).trim();if(t)return t}
+  return '';
+}
+// Knopf „Link einfügen“: liest die Zwischenablage erst nach deinem Tipp, iOS zeigt dann die Blase „Einsetzen“.
+// Im Test (iOS 27) kam die Blase beim ersten Tipp manchmal nicht, oder Safari lieferte nichts. Darum nach 5 Sekunden ein Hinweis,
+// jede Meldung nennt den Grund, und Einsetzen von Hand ins Feld „Vinted-Link“ macht dasselbe wie der Knopf.
+let linkNr=0;
 async function linkEinfuegen(){
-  let t='';
-  try{t=await navigator.clipboard.readText()}catch(e){}
-  if(!t.trim()){go('liste');$('#n-msg').textContent='Zwischenablage nicht lesbar. Lang ins Feld „Vinted-Link“ drücken und „Einsetzen“ wählen.';$('#n-link').focus();return}
-  linkUebernehmen(t);
+  const nr=++linkNr,msg=t=>{if(nr===linkNr)$('#n-msg').textContent=t};go('liste');
+  const hand='Oder von Hand: ins Feld „Vinted-Link“ tippen, nochmal tippen und „Einsetzen“ wählen.';
+  const warte=setTimeout(()=>msg('Tipp in der Blase auf „Einsetzen“. Kommt keine Blase: nochmal „Link einfügen“ tippen. '+hand),5000);
+  let t;
+  try{t=await zwischenablageText()}
+  catch(e){msg((e&&e.name==='NotAllowedError'?'Safari hat das Einsetzen nicht erlaubt. ':'Die Zwischenablage ließ sich nicht lesen. ')+hand);return}
+  finally{clearTimeout(warte)}
+  if(nr!==linkNr)return;
+  if(!t){msg('Die Zwischenablage ist leer. In der Vinted-App beim Artikel: Teilen → Link kopieren. '+hand);return}
+  if(!linkUebernehmen(t))msg(`In der Zwischenablage steht kein Vinted-Artikel-Link, sondern „${t.replace(/\s+/g,' ').slice(0,50)}${t.length>50?'…':''}“. In der Vinted-App beim Artikel: Teilen → Link kopieren.`);
 }
 // Link übernehmen: Artikel schon da → Bearbeiten, sonst Formular füllen. Der Helfer ruft den Link nie ab.
 function linkUebernehmen(text){
@@ -1785,11 +1813,16 @@ async function teilen(){
 function sichern(){touch()&&sicherungsDatei()?teilen():herunterladen()}
 $('#exp').addEventListener('click',herunterladen);
 $('#exp-share').addEventListener('click',teilen);
-function importieren(e,modus){
-  const f=e.target.files[0];e.target.value='';if(!f)return;
-  const r=new FileReader();r.onload=()=>{
+// iPhone: erst lesen, dann das Feld leeren (vorher geleert, scheitert das Lesen oft still)
+async function importieren(e,modus){
+  const input=e.target,f=input.files&&input.files[0];
+  let inhalt;
+  try{if(!f)return;inhalt=await f.text()}
+  catch(x){alert('Die Datei ließ sich nicht lesen. Liegt sie in iCloud, öffne sie einmal in der Dateien-App, dann nochmal wählen.');return}
+  finally{input.value=''}
+  {
     let d,list;
-    try{d=JSON.parse(r.result);list=Array.isArray(d)?d:d&&Array.isArray(d.items)?d.items:null;if(!list)throw 0}catch(x){alert('Datei nicht lesbar.');return}
+    try{d=JSON.parse(inhalt);list=Array.isArray(d)?d:d&&Array.isArray(d.items)?d.items:null;if(!list)throw 0}catch(x){alert('Das ist keine Sicherung vom Vinted-Helfer. Wähle die Datei „vinted-helfer-….json“.');return}
     const neuBilder=Object.fromEntries(Object.entries((d&&d.bilder)||{}).filter(([,v])=>istBild(v)));
     const neuDel=d&&d.geloescht&&typeof d.geloescht==='object'?d.geloescht:{};
     const neuSuchen=Array.isArray(d&&d.suchen)?d.suchen.map(sucheSauber).filter(Boolean):[];
@@ -1818,7 +1851,7 @@ function importieren(e,modus){
     dbTx(s=>{s.clear();for(const [k,v] of bilder)s.put(v,k)});
     // importierte Artikel behalten ihren Zeitstempel, sonst gewinnen sie beim nächsten Abgleich zu Unrecht
     merkeStand();save();closeEdit();renderAll();alert(msg);
-  };r.readAsText(f);
+  }
 }
 $('#imp-merge').addEventListener('change',e=>importieren(e,'zusammen'));
 $('#imp-replace').addEventListener('change',e=>importieren(e,'ersetzen'));
