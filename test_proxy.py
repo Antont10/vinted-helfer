@@ -613,6 +613,23 @@ class Hilfen(unittest.TestCase):
         self.assertIsNotNone(m, 'KAUF_JSON fehlt in index.html')
         self.assertIn(m.group(1), P.SYSTEM_KAUF)
 
+    def test_app_regeln_wie_im_proxy(self):
+        # Claude-App-Weg (Version 8.2): Die Fragen im Helfer nutzen wortgleich dieselben Regeln wie der Proxy
+        html = open(os.path.join(HIER, 'index.html'), encoding='utf-8').read()
+        for name, system in (('vorschlag', P.SYSTEM), ('kauf', P.SYSTEM_KAUF), ('trends', P.SYSTEM_TREND)):
+            m = re.search(r'\n%s:`([^`]*)`' % name, html)
+            self.assertIsNotNone(m, 'APP_REGELN.%s fehlt in index.html' % name)
+            self.assertEqual(m.group(1), system, 'APP_REGELN.%s weicht von ki-proxy.py ab' % name)
+        n = re.search(r"const NISCHEN='([^']*)'", html)
+        self.assertIsNotNone(n, 'NISCHEN fehlt in index.html')
+        self.assertEqual(n.group(1), P.KONFIG['nischen'])
+
+    def test_trend_nachricht_wie_in_der_app(self):
+        # gleicher Satz wie trendSatz() im Helfer (test.js prüft dort denselben Text)
+        t = time.mktime((2026, 10, 16, 12, 0, 0, 0, 0, -1))
+        inhalt = json.loads(P.trend_nachricht(t))['message']['content'][0]['text']
+        self.assertEqual(inhalt, 'Heute ist der 16.10.2026 (Oktober). Recherchiere, was sich auf Vinted in Deutschland in den nächsten 2 Wochen schnell verkauft.')
+
     def test_origins_passen_zu_index_html(self):
         html = open(os.path.join(HIER, 'index.html'), encoding='utf-8').read()
         m = re.search(r"const KI_ORIGINS=(\[[^\]]*\])", html)
