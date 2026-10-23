@@ -1,0 +1,11 @@
+# privat, nicht ins öffentliche Repo
+.env
+.env.*
+.DS_Store
+.claude/
+CLAUDE.md
+START-PROMPT.md
+*.json
+!manifest.webmanifest
+__pycache__/
+*.key
