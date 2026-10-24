@@ -10,11 +10,8 @@ und der Text des Angebots, aus dem E-Mails, Telefonnummern und Links entfernt we
 Trends (Phase 8): Einmal pro Woche recherchiert Claude von selbst im Netz, was sich auf Vinted gerade schnell verkauft.
 Dafür bekommt es nur die Websuche (kein WebFetch, es öffnet also keine Seiten und nie vinted.de) und nur das Datum
 und deine Nischen aus KONFIG, keine Daten aus dem Helfer. Das Ergebnis liegt in ki-trends.json neben dem Proxy.
-Optional (Wunsch vom 22.10.2026): Liegt neben dem Proxy eine Datei ki-tavily.key mit einem Tavily-Schlüssel (kostenloses Konto),
-recherchiert Tavily die Trends statt Claude. Das spart Claude-Aufrufe. Zu Tavily gehen nur Datum und Nischen, nie Fotos oder Namen.
-Der Schlüssel steht nur in dieser Datei (nicht im Repo), der Proxy zeigt und loggt ihn nie.
 """
-import base64, glob, json, os, re, secrets, shutil, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
+import base64, glob, json, os, re, secrets, shutil, subprocess, sys, tempfile, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ---- Konfiguration: hier (oder per Umgebungsvariable) umstellen ----------------------------------
@@ -43,10 +40,6 @@ ENV_KEYS = {'aufwand': 'VINTED_KI_AUFWAND', 'aufwand_kauf': 'VINTED_KI_AUFWAND_K
 HIER = os.path.dirname(os.path.abspath(__file__))
 ZAEHLER_DATEI = os.environ.get('VINTED_KI_ZAEHLER') or os.path.join(HIER, 'ki-zaehler.json')
 TRENDS_DATEI = os.environ.get('VINTED_KI_TRENDS') or os.path.join(HIER, 'ki-trends.json')
-TAVILY_KEY_DATEI = os.path.join(HIER, 'ki-tavily.key')
-TAVILY_URL = 'https://api.tavily.com'
-NEUPREIS_ANTEIL = 0.6            # gebraucht höchstens so viel vom Neupreis (Hinweis vom 22.10.2026: Venum-Handschuhe neu etwa 50 €, Tavily nannte 40 bis 50 € gebraucht)
-TAVILY_WARTEN = 5                # Sekunden zwischen zwei Nachfragen, ob die Recherche fertig ist
 MAX_BODY = 6 * 1024 * 1024       # Anfrage insgesamt
 MAX_BILD = 4 * 1024 * 1024       # Foto nach dem Dekodieren
 MAX_NAME = 200
@@ -425,121 +418,9 @@ def vorschlag_holen(k, programm, name, bild, preis=None, text=None, kauf=False, 
     return antwort
 
 
-# ---- Trends mit Tavily statt Claude (nur wenn ki-tavily.key da ist) -------------------------------------
-def _feld(typ, beschr):
-    return {'type': typ, 'description': beschr}
-
-
-# Tavily kennt keinen Wahrheitswert im Schema: nische kommt als "ja" oder "nein" und wird danach zu true oder false
-TAVILY_SCHEMA = {'properties': {
-    'einkauf': {'type': 'array', 'description': '5 bis 8 konkrete Artikel (Marke und Modell oder genauer Typ), die man gebraucht auf Vinted günstig findet und in 1 bis 2 Wochen mit Gewinn weiterverkauft',
-                'items': {'type': 'object', 'properties': {
-                    'was': _feld('string', 'Marke und Modell oder genauer Typ'), 'marke': _feld('string', 'Marke'),
-                    'suche': _feld('string', 'kurzer Suchbegriff für die Vinted-Suche (Marke und Modell)'),
-                    'warum': _feld('string', 'ein kurzer Satz mit dem Grund (Trend, Saison, was die Quelle sagt), bei vielen Fälschungen auch das'),
-                    'neupreis': _feld('number', 'Preis des Artikels neu im Shop in Euro, sonst 0'),
-                    'verkauf_von': _feld('number', 'untere Grenze des realistischen Verkaufspreises in Euro, gebraucht auf Vinted Deutschland (nicht der Neupreis, meist höchstens 60 Prozent davon), vorsichtig geschätzt, sonst 0'),
-                    'verkauf_bis': _feld('number', 'obere Grenze des realistischen Verkaufspreises in Euro, sonst 0'),
-                    'tempo': _feld('string', 'schnell (meist unter einer Woche verkauft) oder mittel (1 bis 3 Wochen)'),
-                    'nische': _feld('string', 'ja, wenn der Artikel zu den Nischen gehört oder ähnlich ist, sonst nein')}}},
-    'einstellen': {'type': 'array', 'description': '4 bis 6 konkrete Arten von Sachen, die man jetzt aus dem eigenen Schrank einstellen sollte, weil sie gerade schnell weggehen',
-                   'items': {'type': 'object', 'properties': {
-                       'was': _feld('string', 'konkrete Art, zum Beispiel Daunenjacken von The North Face'), 'warum': _feld('string', 'ein kurzer Satz mit dem Grund'),
-                       'tempo': _feld('string', 'schnell oder mittel'), 'nische': _feld('string', 'ja oder nein')}}}},
-    'required': ['einkauf', 'einstellen']}
-TAVILY_AUFGABE = """Du recherchierst für einen jungen privaten Wiederverkäufer in Deutschland, was sich auf Vinted gerade schnell verkauft. __SATZ__
-Such nach aktuellen Berichten über Vinted-Trends in Deutschland (Vinteds Trend-Berichte und Pressemitteilungen, Mode- und Reseller-Seiten, Artikel zu Google-Trends) und danach, was zur Jahreszeit gefragt ist. Such nach Berichten über Trends, nicht nach einzelnen Angeboten. Nur konkrete Artikel, keine allgemeinen Gruppen wie "Winterjacken".
-Nischen: __NISCHEN__. Gehen Nischen-Artikel genauso schnell weg, nimm sie bevorzugt. Läuft in der Nische gerade nichts, nimm ehrlich andere Dinge.
-Die Verkaufspreise gelten gebraucht von privaten Verkäufern auf Vinted, nicht neu im Shop. Gebraucht kostet ein Artikel meist höchstens 60 Prozent vom Neupreis. Was langsamer als in 3 Wochen verkauft wird, lässt du weg. Nichts erfinden: Was die Suche nicht stützt, lässt du weg oder schreibst im warum "Erfahrungswert". Nur Dinge, die auf Vinted erlaubt sind. Antworte auf Deutsch, kurz."""
-
-
-def tavily_key():
-    """Schlüssel aus ki-tavily.key neben dem Proxy, sonst None (dann recherchiert Claude). Geprüft wird nur das Format."""
-    try:
-        with open(TAVILY_KEY_DATEI, encoding='utf-8') as f:
-            key = f.read().strip()
-    except OSError:
-        return None
-    return key if re.fullmatch(r'tvly-[A-Za-z0-9_-]{8,100}', key) else None
-
-
-def tavily_http(methode, pfad, key, daten=None):
-    """Ein Aufruf an Tavily. Gibt (Statuscode, JSON) zurück, wirft KiFehler, wenn Tavily nicht erreichbar ist."""
-    req = urllib.request.Request(TAVILY_URL + pfad, method=methode, data=None if daten is None else json.dumps(daten).encode('utf-8'),
-                                 headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            status, roh = r.status, r.read(2_000_000)
-    except urllib.error.HTTPError as e:
-        status, roh = e.code, e.read(100_000)
-        e.close()
-    except (urllib.error.URLError, OSError):
-        raise KiFehler('Tavily ist nicht erreichbar. Netz prüfen und später nochmal versuchen.', 502)
-    try:
-        d = json.loads(roh or b'{}')
-    except ValueError:
-        d = {}
-    return status, d if isinstance(d, dict) else {}
-
-
-def tavily_fehler(status):
-    """Wirft den passenden KiFehler. zaehlt=False: kostete keine Tavily-Credits, die kurze Pause reicht."""
-    if status == 401:
-        raise KiFehler('Tavily kennt den Schlüssel in ki-tavily.key nicht. Neuen Schlüssel eintragen und „./ki-autostart.sh neu“ ausführen.', 502)
-    if status in (429, 432, 433):
-        raise KiFehler('Das Tavily-Limit ist erreicht (Monat oder zu schnell). Später nochmal versuchen.', 429)
-    raise KiFehler('Tavily hat einen Fehler gemeldet (%d).' % status, 502, zaehlt=True)
-
-
-def trends_tavily(k, key):
-    """Trend-Recherche mit Tavily (model mini, Antwort nach TAVILY_SCHEMA). Gibt das Ergebnis wie Claudes JSON zurück, wirft KiFehler."""
-    aufgabe = TAVILY_AUFGABE.replace('__SATZ__', trend_satz()).replace('__NISCHEN__', k['nischen'])
-    status, d = tavily_http('POST', '/research', key, {'input': aufgabe, 'model': 'mini', 'output_schema': TAVILY_SCHEMA})
-    if status >= 300:
-        tavily_fehler(status)
-    rid = d.get('request_id')
-    if not isinstance(rid, str) or not re.fullmatch(r'[\w-]{8,64}', rid):
-        raise KiFehler('Die Antwort von Tavily war nicht lesbar.', 502, zaehlt=True)
-    ende = time.time() + k['timeout_trend']
-    while True:
-        if time.time() > ende:
-            raise KiFehler('Tavily hat zu lange gebraucht (%d Sekunden). Später nochmal versuchen.' % k['timeout_trend'], 504, zaehlt=True)
-        time.sleep(TAVILY_WARTEN)
-        status, d = tavily_http('GET', '/research/' + rid + '?include_usage=true', key)
-        if status >= 300:
-            tavily_fehler(status)
-        if d.get('status') == 'completed':
-            break
-        if d.get('status') == 'failed':
-            raise KiFehler('Tavily konnte die Recherche nicht abschließen.', 502, zaehlt=True)
-    inhalt = d.get('content')
-    inhalt = json_aus_text(inhalt) if isinstance(inhalt, str) else inhalt
-    if not isinstance(inhalt, dict):
-        raise KiFehler('Die Antwort von Tavily war nicht lesbar.', 502, zaehlt=True)
-    for name in ('einkauf', 'einstellen'):
-        for e in inhalt.get(name) if isinstance(inhalt.get(name), list) else []:
-            if isinstance(e, dict):
-                e['nische'] = str(e.get('nische')).strip().lower() in ('ja', 'true')
-    # Tavily nennt oft Neu- oder Shop-Preise als Verkaufspreis: Deckel bei 60 % vom Neupreis. Ohne Neupreis bleibt der Preis, wie er ist.
-    for e in inhalt.get('einkauf') if isinstance(inhalt.get('einkauf'), list) else []:
-        if isinstance(e, dict) and euro(e.get('neupreis')):
-            deckel = round(euro(e['neupreis']) * NEUPREIS_ANTEIL, 2)
-            for feld in ('verkauf_von', 'verkauf_bis'):
-                if euro(e.get(feld)) > deckel:
-                    e[feld] = deckel
-    # die echten Quellen kommen von Tavily, nicht aus dem Text des Modells
-    inhalt['quellen'] = [{'titel': q.get('title'), 'url': q.get('url')} for q in (d.get('sources') if isinstance(d.get('sources'), list) else []) if isinstance(q, dict)]
-    print(time.strftime('%H:%M:%S'), 'Tavily Credits:', (d.get('usage') or {}).get('credits') if isinstance(d.get('usage'), dict) else '?', flush=True)
-    return inhalt
-
-
-def trend_modell(k, key):
-    return 'Tavily' if key else k['modell_trend']
-
-
-def trends_holen(k, programm, key=None):
-    """Eine Trend-Recherche im Netz, mit Tavily (wenn key da ist) oder mit Claude. Wirft KiFehler."""
-    roh = trends_tavily(k, key) if key else json_aus_text(claude_rufen(programm, claude_args(k, programm, 'trend'), trend_nachricht(), k['timeout_trend']))
+def trends_holen(k, programm):
+    """Eine Trend-Recherche im Netz mit Claude (nur Websuche). Wirft KiFehler."""
+    roh = json_aus_text(claude_rufen(programm, claude_args(k, programm, 'trend'), trend_nachricht(), k['timeout_trend']))
     t = bereinigen_trend(roh)
     if not t:
         raise KiFehler('Die Trend-Antwort war nicht lesbar.', 502, zaehlt=True)
@@ -601,23 +482,21 @@ class Trends:
 
     def _lauf(self):
         t0 = time.time()
-        key = tavily_key()   # mit Tavily zählt der Claude-Zähler nicht
         try:
-            if not key and not self.zaehler.nehmen():
+            if not self.zaehler.nehmen():
                 st = self.zaehler.stand()
                 self.fehler = 'Monatsgrenze erreicht (%d von %d).' % (st['n'], st['limit'])
                 return
             try:
-                t = trends_holen(self.k, self.programm, key)
+                t = trends_holen(self.k, self.programm)
             except KiFehler as e:
                 if not e.zaehlt:
-                    if not key:
-                        self.zaehler.zurueck()
+                    self.zaehler.zurueck()
                     self.pause = self.PAUSE_OHNE_KOSTEN
                 self.fehler = e.text
                 print(time.strftime('%H:%M:%S'), 'Trends Fehler', e.status, '%.1fs' % (time.time() - t0), flush=True)
                 return
-            t['zeit'], t['modell'] = int(time.time() * 1000), trend_modell(self.k, key)
+            t['zeit'], t['modell'] = int(time.time() * 1000), self.k['modell_trend']
             self._schreiben(t)
             st = self.zaehler.stand()
             print(time.strftime('%H:%M:%S'), 'Trends ok', '%.1fs' % (time.time() - t0), '%d/%d' % (st['n'], st['limit']), flush=True)
@@ -741,7 +620,7 @@ class Handler(BaseHTTPRequestHandler):
             s = self.server
             seite = (SEITE.replace('__TOKEN__', json.dumps(s.token)).replace('__ERLAUBT__', json.dumps(s.k['origins']))
                      .replace('__STAND__', json.dumps(dict(s.zaehler.stand(), modell=s.k['modell'], modell_kauf=s.k['modell_kauf'],
-                                                           modell_trend=trend_modell(s.k, tavily_key()), trend_timeout=s.k['timeout_trend'], v=VERSION))))
+                                                           modell_trend=s.k['modell_trend'], trend_timeout=s.k['timeout_trend'], v=VERSION))))
             csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
             return self._senden(200, seite, 'text/html; charset=utf-8', {'Content-Security-Policy': csp})
         self._json(404, {'fehler': 'Nicht gefunden.'})
@@ -864,10 +743,8 @@ def main():
     print('Modell %s, Kauf-Check %s, diesen Monat %d von %d KI-Aufrufen' % (k['modell'], k['modell_kauf'], st['n'], st['limit']))
     print('Programm:', s.programm or 'NICHT GEFUNDEN (Pfad in ki-proxy.py unter KONFIG eintragen)')
     t = s.trends.lesen()
-    if os.path.exists(TAVILY_KEY_DATEI) and not tavily_key():
-        print('ki-tavily.key ist da, aber kein gültiger Schlüssel (er beginnt mit tvly-). Die Trends macht deshalb Claude.')
     if k['trend_auto']:
-        print('Trends mit %s: alle %d Tage von selbst, %s' % (trend_modell(k, tavily_key()), k['trend_tage'],
+        print('Trends mit %s: alle %d Tage von selbst, %s' % (k['modell_trend'], k['trend_tage'],
               'letzter Stand ' + time.strftime('%d.%m.%Y %H:%M', time.localtime(t['zeit'] / 1000)) if t else 'noch keine, erste Recherche in 2 Minuten'))
         threading.Thread(target=trend_wecker, args=(s.trends,), daemon=True).start()
     else:

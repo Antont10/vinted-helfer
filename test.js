@@ -363,4 +363,9 @@ eq('Kaputte Daten zählen',[L.kaputteDaten(ab),L.kaputteDaten([{id:1,name:'x',da
 // Das Datumsfeld im Bearbeiten-Fenster speichert nur, was datumOk annimmt (halb getippte Jahre „0002“ und „202520“ sowie leer nicht)
 eq('datumOk',['2026-10-23','0002-10-23','202520-10-23','','1999-01-01','2100-01-01'].map(L.datumOk),[true,false,false,false,true,false]);
 eq('Heute mit kaputtem Datum',L.heute(kd,{postfach:'2026-10-22'},'2026-10-22').filter(t=>t.typ==='versand').length,1);
+// Sicherung: ein Verkauf nach der letzten Sicherung erinnert sofort, nicht erst nach 7 Tagen
+const vkA=[{id:1,name:'a',status:'verkauft',vk:20,datum:'2026-10-10',verkauftAm:'2026-10-22'}];
+const exA=L.heute(vkA,{postfach:'2026-10-23',export:'2026-10-20'},'2026-10-23').filter(x=>x.typ==='export');
+eq('Neuer Verkauf seit der Sicherung',[exA.length,exA[0]&&exA[0].p,/Neuer Verkauf/.test(exA[0]?exA[0].info:'')],[1,3,true]);
+eq('Verkauf vor der Sicherung: keine Erinnerung',L.heute(vkA,{postfach:'2026-10-23',export:'2026-10-22'},'2026-10-23').filter(x=>x.typ==='export').length,0);
 console.log(`${ok} ok, ${fail} Fehler`);process.exit(fail?1:0);

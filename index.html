@@ -292,15 +292,19 @@ button.rund{border-radius:999px;padding:8px 16px}
     <div class="grid">
       <div><label>Verkauf erwartet (€)</label><input id="d-vk" type="number" step="0.5" min="0" inputmode="decimal"></div>
       <div><label>Porto zu dir (€)</label><input id="d-ein" type="number" step="0.5" min="0" inputmode="decimal"></div>
+    </div>
+    <details><summary class="muted">Mehr Einstellungen (Käuferschutz, Zeit, Mindestgewinn)</summary>
+    <div class="grid">
       <div><label>Käuferschutz (%)</label><input id="d-schutz" type="number" step="1" min="0" max="20" value="5" inputmode="decimal"></div>
       <div><label>Porto beim Verkauf (€)</label><input id="d-aus" type="number" step="0.5" min="0" value="0" inputmode="decimal"></div>
       <div><label>Zeit gesamt (Min.)</label><input id="d-min" type="number" step="5" min="0" placeholder="30" inputmode="numeric"></div>
       <div><label>Mindestgewinn (€)</label><input id="d-mg" type="number" step="1" min="0" value="10" inputmode="decimal"></div>
     </div>
+    <p class="muted">Käuferschutz: 0,70 € plus 5 %, Technik bis 8 %. Porto beim Verkauf zahlt meist der Käufer.</p>
+    </details>
     <p class="muted" id="d-kat"></p>
     <p class="muted" id="k-info">An Claude gehen nur Foto, „Was“, Kaufpreis und Angebotstext, ohne E-Mails, Nummern und Links. Namen löschst du selbst.</p>
     <p class="muted" id="k-zaehler"></p>
-    <p class="muted">Käuferschutz: 0,70 € plus 5 %, Technik bis 8 %. Porto beim Verkauf zahlt meist der Käufer.</p>
     <p class="btns"><button class="p" id="d-merk">Auf die Merkliste</button><button class="s" id="d-artikel">Gekauft: als Artikel anlegen</button><button class="s" id="d-leer">Leeren</button> <span class="hint" id="d-msg"></span></p>
   </div>
   <div class="card">
@@ -632,8 +636,10 @@ function heute(items,meta,ref,opt){
   // opt.trends: 'app' ohne Mac (Claude-App oder Sicherung vom Mac), sonst über den KI-Proxy
   if(opt&&opt.trends){const t=trendSauber(meta.trends),app=opt.trends==='app';if(!t||trendAlter(t,ref)>=TREND_TAGE)T.push({p:8,typ:'trends',txt:'Trends holen',
     info:app?(t?`Stand vom ${fmt(trendTag(t))} Neue holst du über die Claude-App oder mit der Sicherung vom Mac.`:'Über die Claude-App oder die Sicherung vom Mac')
-      :t?`Stand vom ${fmt(trendTag(t))} Der KI-Proxy hat inzwischen neu recherchiert, was gerade schnell weggeht.`:'Der KI-Proxy recherchiert einmal pro Woche'})}
-  if(items.length&&(!meta.export||ageDays(meta.export,ref)>=EXPORT_TAGE))T.push({p:8,typ:'export',txt:'Daten sichern',info:meta.export?`Zuletzt am ${fmt(meta.export)}`:'Noch nie gesichert'});
+      :t?`Stand vom ${fmt(trendTag(t))} Dein Mac hat inzwischen neu recherchiert, was gerade schnell weggeht.`:'Dein Mac recherchiert einmal pro Woche'})}
+  // Ein Verkauf nach der letzten Sicherung zählt sofort: Verkaufspreis und Gewinn sind die Daten, die man nicht verlieren will
+  const neuVk=!!meta.export&&items.some(i=>i.verkauftAm>meta.export);
+  if(items.length&&(!meta.export||neuVk||ageDays(meta.export,ref)>=EXPORT_TAGE))T.push({p:neuVk?3:8,typ:'export',txt:'Daten sichern',info:!meta.export?'Noch nie gesichert':neuVk?`Neuer Verkauf seit der Sicherung am ${fmt(meta.export)}`:`Zuletzt am ${fmt(meta.export)}`});
   // Jahreszähler: Hinweis ab 25 Verkäufen oder 1.500 €, bis du „Gesehen“ tippst (kommt bei der nächsten Stufe wieder)
   const y=ref.slice(0,4),J=jahr(items,y);
   if(J.stufe&&meta.jahrHinweis!==y+':'+J.stufe)T.push({p:J.stufe===2?1:9,typ:'jahr',rot:J.stufe===2,stufe:J.stufe,txt:J.stufe===2?'Meldegrenze erreicht':'Bald Meldegrenze',
@@ -894,7 +900,7 @@ function trendAntwort(alt,d){
   const msg=besser?`Neue Trends vom ${fmt(trendTag(neu))}`
     :d&&d.laeuft?'Claude recherchiert noch. Tipp in ein paar Minuten nochmal auf „Trends holen“.'
     :f?'Die letzte Recherche hat nicht geklappt: '+f+(a?' Die Trends bleiben auf dem alten Stand.':'')
-    :a?`Keine neueren Trends. Stand ${fmt(trendTag(a))}, der Proxy recherchiert ab ${fmt(iso(new Date(a.zeit+TREND_TAGE*864e5)))} von selbst neu.`
+    :a?`Keine neueren Trends. Stand ${fmt(trendTag(a))}, dein Mac recherchiert ab ${fmt(iso(new Date(a.zeit+TREND_TAGE*864e5)))} von selbst neu.`
     :'Noch keine Trends. Tipp in ein paar Minuten nochmal.';
   return {trends:t,msg};
 }
@@ -1124,7 +1130,7 @@ function appAntwort(s,jetzt){
 }
 /* LOGIK-END */
 
-const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='10.3 vom 24.10.2026',BILD_PX=160;
+const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='10.4 vom 24.10.2026',BILD_PX=160;
 const ADRESSE='https://antont10.github.io/vinted-helfer/';
 const TABS=['heute','liste','angebote','rechner','einkauf','zahlen','daten'];
 let items=[],meta={},editId=null,filt='offen',relistId=null,relistWarn=false,stand=new Map(),nBild=null,db=null,dauerhaft=null;
@@ -1261,7 +1267,9 @@ function relistForm(id){
   <button class="s" data-h="relistok" data-id="${esc(id)}">Bestätigen</button> <span class="hint" id="rl-msg"></span></div>`;
 }
 function renderHeute(){
-  const T=heute(items,meta,undefined,{trends:kiSperre()?'app':'proxy'});
+  // Ohne Artikel ergeben „Nachrichten prüfen“ und „Trends holen“ keinen Sinn: erst den ersten Artikel anlegen
+  const T=items.length?heute(items,meta,undefined,{trends:kiSperre()?'app':'proxy'}):[];
+  if(!items.length){$('#h-list').innerHTML='<p class="muted">Noch kein Artikel. Lege deinen ersten an, dann steht hier, was heute zu tun ist.</p><p class="btns"><button class="p" data-h="neu">Ersten Artikel anlegen</button></p>';renderTrendHeute();return}
   $('#h-list').innerHTML=T.length?T.map(t=>`<div class="task${t.rot?' rot':''}"><div class="art">${t.id!=null?bildTag(byId(t.id),'k'):''}<div><div class="tt">${esc(t.txt)}</div><div class="muted">${esc(t.info)}</div>${t.typ==='relist'&&String(relistId)===String(t.id)?relistForm(t.id):''}</div></div><div class="acts">${taskBtns(t)}</div></div>`).join('')
     :'<p class="muted">Alles erledigt für heute.</p>';
   renderTrendHeute();
@@ -1269,6 +1277,7 @@ function renderHeute(){
 $('#h-list').addEventListener('click',e=>{
   const b=e.target.closest('button[data-h]');if(!b)return;
   const h=b.dataset.h,it=byId(b.dataset.id);
+  if(h==='neu'){go('liste');blattAuf();return}
   if(h==='post'){meta.postfach=today();save()}
   else if(h==='export'){sichern();return}
   else if(h==='trends'){kiSperre()?trendAppZeigen():trendsHolen(false);return}
@@ -1634,7 +1643,7 @@ function kiGrossSetzen(key,url){key=String(key);kiGross.delete(key);if(url){kiGr
 const kiS={n:{erg:null,text:'',beschr:null,msg:'',info:'',busy:false},e:{erg:null,text:'',msg:'',info:'',busy:false,fuer:null}};
 // Grund, warum die KI hier nicht geht (dann ist der Knopf grau), sonst null
 function kiSperre(){
-  if(istIOS())return 'Am iPhone läuft die KI über die Claude-App: Frage weitergeben, Claudes Antwort einfügen. Der KI-Proxy läuft nur am Mac.';
+  if(istIOS())return 'Am iPhone läuft die KI über die Claude-App: Frage weitergeben, Claudes Antwort einfügen. Der KI-Teil auf dem Mac läuft nur dort.';
   if(!kiOrtOk(location.origin))return 'Die KI geht nur auf antont10.github.io oder localhost'+(location.protocol==='file:'?', nicht in der Datei-Version.':'.');
   return null;
 }
@@ -1956,7 +1965,7 @@ function renderTrendHeute(){
 function renderTrendApp(){
   const el=$('#tr-app');
   if(!kiSperre()){el.innerHTML='';return}
-  el.innerHTML=`<h3>Trends über die Claude-App holen</h3><p class="muted">Claude sucht im Netz und öffnet nie vinted.de. Raus gehen nur Datum und Nischen.</p>`
+  el.innerHTML=`<h3>Trends über die Claude-App holen</h3><p class="muted">Claude sucht im Netz und öffnet nie vinted.de. Raus gehen nur das Datum und deine Themen.</p>`
     +appWegHtml('trends','')+(trendS.msg?`<p class="hint">${esc(trendS.msg)}</p>`:'');
 }
 function trendAppZeigen(){go('einkauf');$('#tr-app').scrollIntoView({behavior:'smooth',block:'start'})}
@@ -2024,7 +2033,7 @@ function kaufKiRender(){
   $('#k-fotostand').textContent=kaufBild?'Foto bereit':'kein Foto';$('#k-fotoweg').classList.toggle('hide',!kaufBild);
   $('#k-text').placeholder=app?'Optional: Text des Angebots, wenn du ihn kopieren kannst. Kaufpreis und Porto liest der Helfer selbst raus.':'Am Mac: auf der Angebotsseite Cmd+A, Cmd+C, hier Cmd+V. Kaufpreis und Porto liest der Helfer selbst raus.';
   $('#k-msg').textContent=kaufS.msg;
-  $('#k-zaehler').textContent=app?'Der Weg über die Claude-App läuft über dein Claude-Abo, der Zähler im Proxy zählt ihn nicht.':kiZaehlerText()+(z.bekannt&&z.rest===0?' Laut letzter Meldung ist die Grenze erreicht, der Proxy entscheidet.':'');
+  $('#k-zaehler').textContent=app?'Der Weg über die Claude-App läuft über dein Claude-Abo, der Zähler auf dem Mac zählt ihn nicht.':kiZaehlerText()+(z.bekannt&&z.rest===0?' Laut letzter Meldung ist die Grenze erreicht, der Proxy entscheidet.':'');
   if(!e){$('#k-erg').innerHTML='';return}
   const li=a=>`<ul class="kl">${a.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`;
   $('#k-erg').innerHTML=`<div class="out">`
