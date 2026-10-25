@@ -1130,7 +1130,7 @@ function appAntwort(s,jetzt){
 }
 /* LOGIK-END */
 
-const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='10.4 vom 24.10.2026',BILD_PX=160;
+const KEY='vinted-helfer-v1',MKEY='vinted-helfer-meta',VERSION='10.5 vom 25.10.2026',BILD_PX=160;
 const ADRESSE='https://antont10.github.io/vinted-helfer/';
 const TABS=['heute','liste','angebote','rechner','einkauf','zahlen','daten'];
 let items=[],meta={},editId=null,filt='offen',relistId=null,relistWarn=false,stand=new Map(),nBild=null,db=null,dauerhaft=null;
@@ -1221,14 +1221,16 @@ async function copy(t,el){
   if(el){el.textContent=ok?'Kopiert.':'Kopieren ging nicht. Text lange drücken und „Kopieren“ wählen.';setTimeout(()=>el.textContent='',ok?2000:6000)}
   return ok;
 }
-function setStatus(it,s){
+// schnell: ein Tipp auf „Verkauft“, Verkaufspreis = Preis im Helfer, Kosten behalten oder 0, keine Fragen (Korrektur unter Bearbeiten)
+function setStatus(it,s,schnell){
   const vor=it.status;if(s===vor)return true;
   if(s==='eingestellt'&&(vor==='idee'||vor==='foto')){
     if(!(it.preis>0)){const p=askNum('Preis in Vinted (€):');if(p===null)return false;it.preis=p}
     if(it.min==null)it.min=it.preis;
     it.start=it.preis;it.datum=today();it.gelistet=today();
   }
-  if(VERKAUFT.includes(s)&&!VERKAUFT.includes(vor)){
+  if(VERKAUFT.includes(s)&&!VERKAUFT.includes(vor)&&schnell&&it.preis>0){it.vk=it.preis;it.kosten=it.kosten||0;it.verkauftAm=today()}
+  else if(VERKAUFT.includes(s)&&!VERKAUFT.includes(vor)){
     const vk=askNum('Verkaufspreis in €:',it.preis);if(vk===null)return false;
     const k=askNum('Deine Kosten (z. B. Porto, Verpackung) in €, sonst 0:',0);if(k===null)return false;
     it.vk=vk;it.kosten=k;it.verkauftAm=today();
@@ -1303,7 +1305,7 @@ const offen=i=>['idee','foto','eingestellt','verkauft'].includes(i.status);
 function info(it){
   const f=`Fotos ${fotoStand(it)}/${FOTOS.length}`;
   if(it.status==='eingestellt')return `eingestellt ${fmt(it.datum)}`+(it.gelistet&&it.gelistet!==it.datum?`, neu ${fmt(it.gelistet)}`:'')+' · '+f;
-  if(it.status==='verkauft')return `verkauft ${fmt(it.verkauftAm)}, versenden bis ${fmt(addWerktage(it.verkauftAm||today(),VERSAND_WT))}`;
+  if(it.status==='verkauft')return `verkauft ${fmt(it.verkauftAm)}${it.vk>=0&&it.vk!=null?` für ${eur(it.vk)}`:''}, versenden bis ${fmt(addWerktage(it.verkauftAm||today(),VERSAND_WT))}`;
   if(it.status==='versendet')return `versendet ${fmt(it.versendetAm)}`;
   if(it.status==='bewertet')return `verkauft ${fmt(it.verkauftAm)} für ${eur(it.vk)}`;
   return f;
@@ -1323,7 +1325,7 @@ function renderListe(){
     <td class="num" data-l="Tage">${t==null?'–':`<span class="dot ${ampel(t)}"></span>${t}`}</td>
     <td class="num" data-l="Preis">${it.preis!=null?eur(it.preis):'–'}</td>
     <td class="num" data-l="Vorschlag">${senk?`<span class="hint">auf ${eur(v)}</span><br><button class="s" data-a="senk" data-id="${id}">Übernehmen</button>`:on?'<span class="muted">passt</span>':'–'}</td>
-    <td><div class="acts"><button class="s" data-a="edit" data-id="${id}">Bearbeiten</button>${nx?`<button class="s" data-a="next" data-id="${id}">${nx[1]}</button>`:''}<button class="s warn" data-a="del" data-id="${id}">Löschen</button></div></td></tr>`;
+    <td><div class="acts"><button class="s" data-a="edit" data-id="${id}">Bearbeiten</button>${it.status==='eingestellt'&&it.preis>0?`<button class="p" data-a="vk" data-id="${id}">Verkauft · ${eur(it.preis)}</button>`:nx?`<button class="s" data-a="next" data-id="${id}">${nx[1]}</button>`:''}<button class="s warn" data-a="del" data-id="${id}">Löschen</button></div></td></tr>`;
   }
   $('#aktiv').innerHTML=h;
 }
@@ -1334,6 +1336,7 @@ $('#aktiv').addEventListener('click',e=>{
   if(a==='edit'){openEdit(it.id);return}
   if(a==='senk'){it.preis=vorschlag(it);save()}
   if(a==='next'){setStatus(it,NEXT[it.status][0])}
+  if(a==='vk'){setStatus(it,'verkauft',true)}
   if(a==='del'){if(!confirm('Artikel wirklich löschen?'))return;
     // Lösch-Vermerk, damit der Artikel beim Zusammenführen nicht zurückkommt
     items=items.filter(i=>i!==it);meta.geloescht[String(it.id)]=Date.now();bildSetzen(it.id,null);save();if(String(editId)===String(it.id))closeEdit()}
@@ -1451,7 +1454,7 @@ function linkHinweis(it){
 function renderEdit(){
   const it=byId(editId);if(!it){closeEdit();return}
   $('#edit').innerHTML=`<div class="row"><h2>Bearbeiten</h2><button class="s" data-e="close">Schließen</button></div>${linkHinweis(it)}
-  <div class="grid">${fld('link','Vinted-Link','url','https://www.vinted.de/items/…')}${fld('name','Name')}${sel('status','Status',STATUS)}${fld('preis','Preis (€)','number')}${fld('min','Mindestpreis (€)','number')}${fld('ek','Einkaufspreis (€)','number')}${fld('datum','Eingestellt am','date')}${fld('gelistet','Zuletzt neu eingestellt','date')}${fld('minuten','Zeit gesamt (Min.)','int')}</div>
+  <div class="grid">${fld('link','Vinted-Link','url','https://www.vinted.de/items/…')}${fld('name','Name')}${sel('status','Status',STATUS)}${fld('preis','Preis (€)','number')}${fld('min','Mindestpreis (€)','number')}${fld('ek','Einkaufspreis (€)','number')}${fld('datum','Eingestellt am','date')}${fld('gelistet','Zuletzt neu eingestellt','date')}${fld('minuten','Zeit gesamt (Min.)','int')}${VERKAUFT.includes(it.status)?fld('vk','Verkaufspreis (€)','number')+fld('kosten','Kosten, z. B. Porto (€)','number'):''}</div>
   <p id="e-link"></p>
   <div class="btns">${bildTag(it,'g')}<label class="s" for="e-foto">${bilder.has(String(it.id))?'Foto ändern':'Foto wählen'}</label><input type="file" id="e-foto" class="datei" accept="image/*">${bilder.has(String(it.id))?'<button class="s" data-e="bildweg">Foto entfernen</button>':''}</div>
   <div id="ki-e"></div>
